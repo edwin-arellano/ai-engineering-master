@@ -1,0 +1,114 @@
+[Reunión inicial - 22 de abril de 2026 - 60 min]
+[Asistentes: Carlos (CEO cliente), Manuel (CTO cliente), Maite (Jefa de administración cliente), Antonio (Comercial), Sofía (Solution Engineer)]
+
+[00:00:14]
+Antonio: ...bueno, ya estamos todos, ¿no? Empezamos. Carlos, ¿me escucháis bien?
+Carlos: Sí, sí, perfecto. Espera que cierro la puerta... [silencio 8 segundos] Vale, listo.
+Antonio: Gracias por dedicarnos este rato. Como sabes, hoy queríamos profundizar en el proyecto de la plataforma de gestión de obras. La idea es tener clara la foto antes de pasaros una propuesta.
+Carlos: Perfecto. Mira, lo primero que quiero comentaros es que esto viene de algo que ya estamos sufriendo. Cada vez que tenemos una obra nueva — y este año hemos cerrado 47 — el caos en Excel es brutal. La Maite se pasa los domingos cuadrando partes.
+Maite: Y los sábados también, eh. [risas]
+Manuel: Bueno, ahora son 47 pero el año que viene queremos cerrar 80, así que el problema escala. No es solo un dolor de cabeza, es un cuello de botella.
+Antonio: Sofía, ¿anotas eso del crecimiento esperado?
+Sofía: Apuntado: pasar de 47 a 80 obras al año.
+
+[00:04:30]
+Carlos: A ver, los conductores — perdón, los jefes de obra — necesitan reportar cada día qué materiales se han usado, cuántas horas ha estado cada trabajador, si ha habido alguna incidencia... la cosa es que ahora lo hacen por WhatsApp.
+Sofía: ¿WhatsApp? ¿Como mensajes sueltos al grupo?
+Carlos: Sí. Y luego Maite los lunes pasa todo a Excel.
+Maite: Los lunes y los martes, dependiendo de cuánto se acumule del fin de semana.
+Carlos: Bueno, no entremos ahí... lo importante es que esto no puede seguir así.
+Antonio: Entonces necesitamos algo móvil, que los jefes de obra puedan rellenar in situ. Pregunta clave: ¿funciona offline? Porque imagino que muchas obras están sin cobertura.
+Manuel: Eso es fundamental. Si no funciona sin cobertura, no nos sirve. En la sierra norte por ejemplo no hay 4G en muchas zonas.
+Carlos: Sí, eso. Y queremos fotos. Mucha foto. Foto de la entrada de material, foto del estado de la obra al cierre del día, foto de incidencias si hay alguna, foto del parte de trabajo firmado por el cliente...
+Sofía: ¿Geolocalización en las fotos? Porque a veces hay clientes que dicen que la foto no es de su obra, ¿no?
+Manuel: Sí, sí, eso también. Geolocalización y timestamp inmutable, que no se pueda manipular.
+
+[00:11:20]
+Antonio: Vale. Ahora una pregunta de negocio, Carlos. El que pague el módulo, ¿es vuestra empresa entera o cada delegación?
+Carlos: Eso lo gestiono yo. No te preocupes. Va contra la matriz.
+[teléfono sonando de fondo]
+Carlos: Perdona, perdona... [silencio 15 segundos] Era Pepe, ya le digo luego. ¿Por dónde íbamos?
+Sofía: Estábamos viendo el tema de los reportes de los jefes de obra.
+Carlos: Ah sí. Además de eso, necesitamos un panel para la oficina. Para que Maite y el resto del equipo de administración vean todo en tiempo real. Que puedan ver: a día de hoy en la obra de la calle Velázquez vamos así, en la de Pozuelo vamos asá, en la de Las Rozas tenemos el retraso ese...
+Maite: Y por favor con buscador. Que ahora tengo que abrir 14 Excels para encontrar una cosa.
+Manuel: Yo lo que quiero es un dashboard. Con KPIs. Margen por obra, desviación frente a presupuesto, alertas si nos vamos pasando.
+Antonio: Eso es más estratégico. Lo apuntamos como módulo 2.
+
+[00:17:45]
+Carlos: Una cosa importante. Esto tiene que conectar con SAP. Tenemos SAP Business One. La parte de facturación y compras la queremos seguir llevando allí.
+Manuel: Sí, eso es no negociable. Si rompemos el flujo de SAP nos meten un puro.
+Sofía: ¿Integración bidireccional?
+Manuel: Lo ideal sería bidireccional, sí. Que cuando se reporta el material consumido en la obra, automáticamente se descuente del stock en SAP. Y al revés, que las facturas de proveedores que entran en SAP se vinculen a la obra correspondiente.
+Antonio: Esto añade complejidad. Lo dejamos como integración crítica.
+Manuel: Pero importante: no quiero que reescribáis cosas de SAP. SAP sigue siendo el sistema de registro para facturación, vosotros sois el sistema operativo de la obra.
+Sofía: Anotado. El estimator es source of truth para la obra, SAP lo es para facturación.
+
+[00:24:10]
+[tos prolongada de alguien]
+Carlos: ...y otra cosa. Aquí hay roles muy claros. Jefe de obra solo ve lo suyo, oficina ve todo, dirección ve KPIs agregados, y luego está la externa, la asesoría laboral, que necesita ver solo horas y partes médicos.
+Antonio: ¿Asesoría laboral externa?
+Carlos: Sí, llevamos la nómina con un externo. Necesitan acceso de solo lectura a los partes de horas.
+Manuel: Y a partes de accidente, que también pasan por ellos.
+Maite: Eso por favor con histórico. Que ahora cada vez que les mandamos algo es un caos.
+
+[00:30:00]
+Carlos: Voy a por un café que llevo tres horas y ya no doy más. Volved a empezar sin mí. [se levanta]
+Manuel: No, no, espera, no es lo mismo sin el jefe... [risas]
+[silencio 40 segundos, conversación de fondo no inteligible]
+Carlos: [vuelve] Vale, listo. Sigamos.
+
+Antonio: Ahora una pregunta técnica, Manuel. ¿Tenéis preferencia de stack?
+Manuel: A ver, nosotros internamente no desarrollamos, lo subcontratamos siempre. Pero el equipo de mantenimiento que tenemos actualmente trabaja con .NET. Si pudiera ser .NET en backend, mejor para nosotros a futuro. Aunque no es bloqueante.
+Sofía: ¿Y el móvil? ¿Híbrido o nativo?
+Manuel: Lo que tú nos digas. Lo importante es que funcione offline y que vaya bien con fotos pesadas.
+Antonio: React Native o Flutter, normalmente. En esto tenemos preferencia interna por React Native.
+Manuel: Lo que sea más estándar.
+
+[00:36:00]
+Antonio: Vale, vamos a hablar de plazos. ¿Cuándo lo necesitáis funcionando?
+Carlos: A ver, el año fiscal lo cerramos en septiembre. Lo ideal sería tenerlo en producción para octubre, antes de la temporada fuerte. Eso nos da... ¿qué? ¿Seis meses?
+Antonio: Es ajustado. Vamos a ver. ¿Lo lanzamos todo a la vez o por fases?
+Manuel: Yo soy de fases. Primero la app móvil con los reportes básicos, que es lo que más sufrimos ahora. Luego el panel admin. Luego la integración con SAP, que sé que es lo más complicado. Y al final los KPIs.
+Carlos: Sí, eso me parece sensato.
+
+[00:42:20]
+Sofía: ¿Tenéis diseño? ¿Wireframes, mockups?
+Carlos: Tenemos una agencia que nos hizo el manual de marca. Colores, tipografía, logo. Pero pantallas como tal, no. Eso lo tendríais que hacer vosotros.
+Manuel: Igualmente, no inventéis. Lo importante es que sea fácil de usar para gente que no es muy tecnológica. Mis jefes de obra tienen 50 años de media y algunos pelean con WhatsApp.
+Maite: Y por favor, con tipografía grande. Que muchos no usan gafas para mirar el móvil y luego nos llaman pidiendo soporte.
+
+[00:48:15]
+[interrupción - alguien entra al despacho de Carlos]
+Carlos: Hola Pepe, ahora estoy en una reunión... Sí, sí, ahora termino... [a la reunión] Perdón, perdón.
+Antonio: Carlos, una pregunta sobre el alcance. Lo que estamos viendo ahora mismo, ¿es solo para construcción residencial o también para industrial?
+Carlos: Ahora mismo solo residencial. Industrial es otra bestia, lo dejamos para más adelante.
+Manuel: Aunque ya que estamos, ¿podríais dejar puerta abierta a industrial? Que el modelo de datos lo soporte aunque ahora no se desarrolle.
+Antonio: Eso lo apuntamos como requisito de arquitectura.
+
+[00:52:00]
+Carlos: Otra cosa, los datos. Nosotros generamos mucha documentación por obra. Planos, contratos, certificados de instalación... no os pido que lo gestionéis vosotros, ya tenemos un SharePoint para eso. Pero sí queremos que desde la app se pueda enlazar a documentos del SharePoint.
+Sofía: Vale, integración con SharePoint a nivel de enlaces.
+Manuel: Sí, ni siquiera subida, solo referencia y previsualización.
+
+[00:55:30]
+Carlos: ¿Qué nos cuesta esto? Dime ya cuánto.
+Antonio: [risas] A ver Carlos, déjanos primero estimarlo bien. La semana que viene te pasamos propuesta detallada.
+Carlos: Pero por encima. Un rango.
+Antonio: Entre cinco y siete cifras... [risas] vale, en serio: por la conversación que estamos teniendo, esto es un proyecto medio. Te mandamos los números con desglose el lunes.
+Carlos: Vale, vale.
+
+[00:58:10]
+Manuel: Una última cosa. Notificaciones push. Cuando un jefe de obra reporta una incidencia importante, los de oficina tienen que enterarse al momento.
+Sofía: Anotado. ¿Algún tipo de SLA en respuesta?
+Manuel: No, solo que llegue. Que la persona responsable lo vea.
+Maite: Y que se pueda configurar quién recibe qué. Que no me lleguen a mí las notificaciones de soldadura, por ejemplo, que esas son cosa de operaciones.
+
+Antonio: Vale, lo damos por bueno. Carlos, Manuel, Maite, ¿algo más que se nos quede?
+Carlos: No, creo que está todo.
+Manuel: A mí también me ha quedado claro. Espero la propuesta el lunes.
+Maite: Sobre lo del SharePoint, te mando luego por correo el contacto del que lo gestiona.
+Antonio: Perfecto. Pues nada, gracias a todos, y el lunes os enviamos todo el detalle.
+Carlos: Gracias. Y oye Antonio, lo otro de lo que hablamos por teléfono el viernes, lo del proyecto del retrovisor digital, eso lo tienes en el radar, ¿no?
+Antonio: Sí, sí, eso te llamo yo a final de la semana que viene.
+Carlos: Vale, perfecto. Hala, hasta luego.
+[fin de la reunión]

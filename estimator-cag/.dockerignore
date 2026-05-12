@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.python-version
+
+# uv
+.uv/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Env
+.env
+.env.local
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docs (no necesarios en runtime)
+README.md
+examples/
+tests/

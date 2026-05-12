@@ -12,9 +12,8 @@ router = APIRouter(prefix="/api/v1", tags=["estimations"])
 async def estimate(request: EstimationRequest) -> EstimationResponse:
     """Genera una estimación de software a partir de una transcripción.
 
-    El router es deliberadamente delgado: solo recibe, delega y devuelve.
-    Toda la lógica de prompt, llamada al LLM y normalización vive en
-    `app.services.llm_service`.
+    El router es deliberadamente delgado. Toda la lógica (preprocesado,
+    construcción del prompt, llamada al LLM, normalización de respuesta y
+    evaluación) vive en `app.services.llm_service`.
     """
-    result = await generate_estimation(request.transcription)
-    return EstimationResponse(**result)
+    return await generate_estimation(request)
