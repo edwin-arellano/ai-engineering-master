@@ -68,6 +68,71 @@ uv run uvicorn app.main:app --reload
 
 ---
 
+## Interfaz conversacional (Streamlit)
+
+A partir de la sesión 3, el proyecto incluye un cliente conversacional
+basado en **Streamlit** que reutiliza el system prompt y los ejemplos
+CAG del servicio FastAPI (misma fuente de verdad, importados
+directamente desde `app.services.llm_service` y `app.context.examples`).
+
+En esta rama (`pre-session-03`), el Streamlit **no** consume el endpoint
+FastAPI: hace sus propias llamadas en streaming directamente al SDK del
+proveedor configurado en `LLM_PROVIDER`.
+
+### Arrancar la UI
+
+El Streamlit se ejecuta **localmente** (no en Docker) para tener
+hot-reload rápido durante el desarrollo. El backend FastAPI puede estar
+arriba o no — el Streamlit no lo necesita en esta rama.
+
+```bash
+cd estimator-cag
+uv run streamlit run streamlit_app.py
+```
+
+La UI queda accesible en `http://localhost:8501`.
+
+### Funcionalidad disponible en esta rama
+
+- Chat conversacional con persistencia de historial dentro de la sesión
+  del navegador (`st.session_state.messages`).
+- Streaming token a token de la respuesta del LLM (`st.write_stream`).
+- System prompt construido con los defaults configurados en `.env`
+  (`DEFAULT_NUM_EXAMPLES`, `DEFAULT_OUTPUT_FORMAT`, `DEFAULT_PREPROCESSING`).
+- Proveedor seleccionable por `LLM_PROVIDER`:
+  - `anthropic` → SDK de Anthropic con `client.messages.stream(...)`.
+  - `openai` → SDK de OpenAI con `client.chat.completions.create(..., stream=True)`.
+
+### Qué NO está disponible todavía
+
+Lo siguiente entra en `session-03` (sesión en vivo):
+
+- Wrapper LiteLLM con fallback automático entre proveedores.
+- Cache exact-match con Redis.
+- Endpoint SSE en el backend (`POST /api/v1/estimate/stream`) que el
+  Streamlit pueda consumir.
+- Observabilidad con `structlog` y métricas estructuradas.
+- Sidebar (`st.sidebar`) con system prompt visible, ejemplos CAG
+  inyectados y métricas de la última llamada (Nivel 3 del ejercicio).
+
+### Cómo cambiar de proveedor sin tocar código
+
+Editar `estimator-cag/.env`:
+
+```env
+# Anthropic primario
+LLM_PROVIDER=anthropic
+LLM_MODEL=claude-haiku-4-5-20251001
+
+# o OpenAI
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4o-mini
+```
+
+Recargar la página del Streamlit y el cambio surte efecto.
+
+---
+
 ## Variables de entorno
 
 | Variable | Default | Descripción |
