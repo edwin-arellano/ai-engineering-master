@@ -6,12 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Settings del servicio validados al arrancar la aplicación.
-
-    Si una variable obligatoria falta o tiene un tipo incorrecto, la
-    aplicación falla rápido en el arranque en lugar de fallar al
-    recibir la primera petición.
-    """
+    """Settings del servicio validados al arrancar la aplicación."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -24,11 +19,16 @@ class Settings(BaseSettings):
     llm_provider: str = "anthropic"
     llm_model: str = "claude-haiku-4-5-20251001"
     llm_temperature: float = 0.3
-    llm_max_tokens: int = 2048
+    llm_max_tokens: int = 4000
 
     # API keys
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+
+    # CAG configuration (defaults — el request puede overridearlos)
+    default_num_examples: int = 3
+    default_preprocessing: str = "none"  # "none" | "inline_cleaning" | "two_phase"
+    default_output_format: str = "markdown"  # "markdown" | "json"
 
     # Runtime
     environment: str = "development"
