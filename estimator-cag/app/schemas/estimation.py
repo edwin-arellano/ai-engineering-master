@@ -164,3 +164,32 @@ class EstimationResponse(BaseModel):
         description="Salida de la fase de extracción cuando preprocessing=two_phase.",
     )
     evaluation: StructureCheck | None = None
+    cache_hit: bool = Field(
+        default=False,
+        description="True si la respuesta vino del cache Redis sin llamar al LLM.",
+    )
+
+
+class StreamEstimationRequest(BaseModel):
+    """Petición simplificada para el endpoint de streaming.
+
+    Deliberadamente minimal: sin preprocessing, sin evaluation, sin
+    thinking_budget. Mezclar preprocesado multi-fase con streaming
+    contamina la UX (múltiples llamadas, tokens mezclados, latencia
+    impredecible).
+    """
+
+    transcription: str = Field(
+        ...,
+        min_length=50,
+        description="Transcripción de la reunión.",
+    )
+    num_examples: int = Field(
+        default=3,
+        ge=0,
+        le=5,
+        description=(
+            "Número de ejemplos CAG a inyectar. La selección es DETERMINISTA "
+            "(primeros N en orden) para que la cache exact-match haga hits."
+        ),
+    )

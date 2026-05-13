@@ -6,16 +6,20 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.101.0",
     "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "litellm>=1.83.0",
     "openai>=2.36.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.2.2",
+    "redis[hiredis]>=7.4.0",
+    "sse-starlette>=3.4.4",
     "streamlit>=1.57.0",
+    "structlog>=25.5.0",
     "uvicorn[standard]>=0.46.0",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pytest>=9.0.3",
 ]

@@ -21,6 +21,9 @@ sesión en vivo) y `session-NN` (estado tras la sesión en vivo).
 | Rama | Contenido |
 |---|---|
 | `pre-session-02` | Scaffolding FastAPI con arquitectura CAG (`POST /api/v1/estimate`) |
+| `session-02` | Servicio parametrizable: preprocesado, evaluación estructural, JSON/Markdown, Dockerización, 10 scripts curl de demo |
+| `pre-session-03` | Cliente conversacional Streamlit con streaming token a token, importando `build_system_prompt` y los ejemplos del backend |
+| `session-03` | Wrapper LiteLLM con fallback, cache Redis, endpoint SSE `/api/v1/estimate/stream`, observabilidad `structlog`, Streamlit desacoplado a cliente HTTP puro |
 
 ## Cómo arrancar
 

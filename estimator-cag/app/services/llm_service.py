@@ -1,16 +1,14 @@
-"""Servicio de generación de estimaciones vía LLM con arquitectura CAG."""
+"""Servicio de generación de estimaciones usando el LLM wrapper."""
 
 from __future__ import annotations
 
 import random
 import time
 
-from anthropic import Anthropic
-from fastapi import HTTPException
-from openai import OpenAI
+import structlog
 
-from app.config import Settings, get_settings
 from app.context.examples import ESTIMATION_EXAMPLES
+from app.core.llm_wrapper import LLMWrapper
 from app.schemas.estimation import (
     EstimationRequest,
     EstimationResponse,
@@ -20,6 +18,8 @@ from app.schemas.estimation import (
     TokenUsage,
 )
 from app.services.evaluation_service import evaluate_estimation
+
+logger = structlog.get_logger()
 
 
 # === System prompt building blocks ===
@@ -117,16 +117,21 @@ estimate anything — only extract the requirements as stated.
 """
 
 
-def _format_examples(num_examples: int, example_format: ExampleFormat) -> str:
-    """Selecciona aleatoriamente N ejemplos y los formatea con separadores claros.
+def _format_examples(
+    num_examples: int,
+    example_format: ExampleFormat,
+    deterministic: bool = False,
+) -> str:
+    """Formatea N ejemplos. Selección aleatoria por defecto, determinista si se pide.
 
-    La selección aleatoria es deliberada: en la sesión en vivo se observó que
-    rotar los ejemplos entre llamadas mejora la robustez del modelo frente a
-    ligeras variaciones en la transcripción.
+    `deterministic=True` selecciona los primeros N ejemplos en orden. Esto es
+    necesario para el endpoint /estimate/stream: sin determinismo, dos llamadas
+    idénticas producirían system prompts distintos (por random.sample) y la
+    cache exact-match nunca haría hit.
     """
     if example_format != ExampleFormat.MARKDOWN:
         raise NotImplementedError(
-            f"example_format={example_format!r} no está soportado todavía en session-02"
+            f"example_format={example_format!r} no soportado en session-03"
         )
 
     if num_examples <= 0:
@@ -134,7 +139,11 @@ def _format_examples(num_examples: int, example_format: ExampleFormat) -> str:
 
     total = len(ESTIMATION_EXAMPLES)
     n = min(num_examples, total)
-    selected = random.sample(ESTIMATION_EXAMPLES, n)
+
+    if deterministic:
+        selected = ESTIMATION_EXAMPLES[:n]
+    else:
+        selected = random.sample(ESTIMATION_EXAMPLES, n)
 
     blocks: list[str] = []
     for index, example in enumerate(selected, start=1):
@@ -153,8 +162,13 @@ def build_system_prompt(
     example_format: ExampleFormat,
     output_format: OutputFormat,
     preprocessing: PreprocessingType,
+    deterministic: bool = False,
 ) -> str:
-    """Compone el system prompt completo según las opciones del request."""
+    """Compone el system prompt según las opciones del request.
+
+    `deterministic=True` se usa desde el endpoint /estimate/stream para que la
+    cache exact-match funcione (mismo input → misma respuesta cacheable).
+    """
     parts: list[str] = []
 
     if preprocessing == PreprocessingType.INLINE_CLEANING:
@@ -167,169 +181,39 @@ def build_system_prompt(
     else:
         parts.append(_MARKDOWN_OUTPUT_INSTRUCTIONS)
 
-    examples_block = _format_examples(num_examples, example_format)
+    examples_block = _format_examples(num_examples, example_format, deterministic)
     if examples_block:
         parts.append(examples_block)
 
     return "\n\n".join(parts)
 
 
-# === LLM call layer ===
+# === Wrapper singleton ===
 
-def _call_anthropic(
-    settings: Settings,
-    model: str,
-    system: str,
-    user: str,
-    max_tokens: int,
-    temperature: float,
-    thinking_budget: int,
-) -> dict:
-    """Llama a Anthropic y normaliza la respuesta a un dict uniforme.
-
-    Cuando thinking_budget > 0, se activa extended thinking. En ese caso,
-    temperature no se envía (Claude 4.5+ no permite combinar temperature
-    con thinking habilitado).
-    """
-    if not settings.anthropic_api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="ANTHROPIC_API_KEY no está configurada",
-        )
-
-    client = Anthropic(api_key=settings.anthropic_api_key)
-
-    kwargs: dict = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "system": system,
-        "messages": [{"role": "user", "content": user}],
-    }
-
-    if thinking_budget > 0:
-        kwargs["thinking"] = {
-            "type": "enabled",
-            "budget_tokens": thinking_budget,
-        }
-        # Cuando thinking está activado, temperature debe omitirse en Claude 4.5+
-    else:
-        kwargs["temperature"] = temperature
-
-    response = client.messages.create(**kwargs)
-
-    # Extraer solo los bloques de tipo "text" (descartando "thinking")
-    text_blocks = [block.text for block in response.content if block.type == "text"]
-    estimation_text = "".join(text_blocks)
-
-    return {
-        "text": estimation_text,
-        "model": response.model,
-        "finish_reason": response.stop_reason or "end_turn",
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
-    }
+_wrapper: LLMWrapper | None = None
 
 
-def _call_openai(
-    settings: Settings,
-    model: str,
-    system: str,
-    user: str,
-    max_tokens: int,
-    temperature: float,
-    thinking_budget: int,
-) -> dict:
-    """Llama a OpenAI Chat Completions y normaliza la respuesta.
-
-    `thinking_budget` se ignora silenciosamente porque el modelo por defecto
-    del curso (gpt-4o-mini) no es un modelo de razonamiento. El parámetro
-    permanece en el request por uniformidad de API.
-    """
-    if not settings.openai_api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="OPENAI_API_KEY no está configurada",
-        )
-
-    client = OpenAI(api_key=settings.openai_api_key)
-
-    response = client.chat.completions.create(
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
-
-    choice = response.choices[0]
-    return {
-        "text": choice.message.content or "",
-        "model": response.model,
-        "finish_reason": choice.finish_reason or "stop",
-        "input_tokens": response.usage.prompt_tokens,
-        "output_tokens": response.usage.completion_tokens,
-    }
-
-
-def _call_llm(
-    settings: Settings,
-    model: str,
-    system: str,
-    user: str,
-    max_tokens: int,
-    temperature: float,
-    thinking_budget: int,
-) -> dict:
-    """Dispatch entre proveedores. Devuelve la respuesta normalizada."""
-    if settings.llm_provider == "anthropic":
-        return _call_anthropic(
-            settings, model, system, user, max_tokens, temperature, thinking_budget
-        )
-    elif settings.llm_provider == "openai":
-        return _call_openai(
-            settings, model, system, user, max_tokens, temperature, thinking_budget
-        )
-    else:
-        raise HTTPException(
-            status_code=500,
-            detail=f"LLM_PROVIDER desconocido: {settings.llm_provider!r}",
-        )
-
-
-# === Two-phase preprocessing ===
-
-def _extract_requirements(settings: Settings, model: str, transcription: str) -> dict:
-    """Primera fase del preprocesado two_phase: extrae requisitos limpios."""
-    return _call_llm(
-        settings=settings,
-        model=model,
-        system=_REQUIREMENTS_EXTRACTION_SYSTEM,
-        user=transcription,
-        max_tokens=2000,
-        temperature=0.2,
-        thinking_budget=0,
-    )
+def get_wrapper() -> LLMWrapper:
+    """Devuelve el singleton del wrapper, instanciándolo en la primera llamada."""
+    global _wrapper
+    if _wrapper is None:
+        _wrapper = LLMWrapper()
+    return _wrapper
 
 
 # === Public API ===
 
 async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
-    """Orquesta el flujo completo: preprocesado → prompt → LLM → evaluación.
+    """Orquesta el flujo completo del endpoint /estimate (no-stream).
 
-    El orden de las fases es deliberado y cada fase es opt-in según el request:
+    Mantiene todas las features de session-02: preprocessing inline/two-phase,
+    evaluation estructural, num_examples random, thinking_budget,
+    output_format markdown/json.
 
-    1. Si preprocessing == two_phase, ejecutar extract_requirements primero.
-    2. Construir el system prompt con las opciones del request.
-    3. Llamar al LLM con el prompt construido y la transcripción (o los
-       requisitos extraídos si two_phase).
-    4. Ejecutar la evaluación estructural si request.evaluation == True.
-    5. Construir la respuesta con metadatos (latencia, tokens, evaluación).
+    Lo único que cambia respecto a session-02 es que la llamada al LLM pasa
+    por el wrapper LiteLLM en lugar de _call_anthropic/_call_openai directos.
     """
-    settings = get_settings()
-    model = request.model or settings.llm_model
-
+    wrapper = get_wrapper()
     started_at = time.time()
 
     # === Fase 1: preprocesado opcional ===
@@ -338,27 +222,33 @@ async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
     preprocessing_output_tokens = 0
 
     if request.preprocessing == PreprocessingType.TWO_PHASE:
-        extraction = _extract_requirements(settings, model, request.transcription)
+        extraction = wrapper.complete(
+            system_prompt=_REQUIREMENTS_EXTRACTION_SYSTEM,
+            user_message=request.transcription,
+            max_tokens=2000,
+            temperature=0.2,
+            thinking_budget=0,
+        )
         extracted_requirements = extraction["text"]
         preprocessing_input_tokens = extraction["input_tokens"]
         preprocessing_output_tokens = extraction["output_tokens"]
 
     # === Fase 2: construcción del system prompt ===
+    # NOTA: deterministic=False (default) mantiene el comportamiento random
+    # de session-02 para preservar el demo del punto de saturación.
     system_prompt = build_system_prompt(
         num_examples=request.num_examples,
         example_format=request.example_format,
         output_format=request.output_format,
         preprocessing=request.preprocessing,
+        deterministic=False,
     )
 
-    # === Fase 3: llamada al LLM ===
+    # === Fase 3: llamada al LLM vía wrapper ===
     user_input = extracted_requirements or request.transcription
-
-    llm_result = _call_llm(
-        settings=settings,
-        model=model,
-        system=system_prompt,
-        user=user_input,
+    llm_result = wrapper.complete(
+        system_prompt=system_prompt,
+        user_message=user_input,
         max_tokens=request.max_tokens,
         temperature=request.temperature,
         thinking_budget=request.thinking_budget,
@@ -389,7 +279,7 @@ async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
     return EstimationResponse(
         estimation=llm_result["text"],
         model=llm_result["model"],
-        provider=settings.llm_provider,
+        provider=llm_result["provider"],
         finish_reason=llm_result["finish_reason"],
         preprocessing_type=request.preprocessing,
         output_format=request.output_format,
@@ -397,4 +287,5 @@ async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
         token_usage=token_usage,
         extracted_requirements=extracted_requirements,
         evaluation=evaluation,
+        cache_hit=llm_result.get("cache_hit", False),
     )
