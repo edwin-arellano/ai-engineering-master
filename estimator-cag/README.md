@@ -6,14 +6,26 @@ usando arquitectura **CAG** (Cache Augmented Generation): el contexto
 de ejemplos previos se inyecta directamente en el system prompt en cada
 llamada — sin base de datos ni retrieval semántico.
 
-En la rama `session-03` el servicio incorpora cinco capas que lo
-acercan a "producción": **wrapper LiteLLM** con fallback automático
-Anthropic ↔ OpenAI, **cache exact-match Redis** con TTL 24h, endpoint
-**`/api/v1/estimate/stream` con SSE** para respuesta token a token,
-**observabilidad estructurada** con `structlog` (request_id por
-petición, contexto vinculado, dual output dev/prod), y **Streamlit
-desacoplado** (cliente HTTP puro que consume el SSE, sin importar nada
-del backend).
+En la rama `pre-session-04` el servicio da el salto de "chat con
+textarea libre" a **producto con formulario tipado y prompts
+versionados como código**:
+
+- El endpoint `POST /api/v1/estimate` cambia drásticamente: deja de
+  aceptar `transcription` con preprocessing/evaluation/thinking_budget
+  y pasa a recibir un cuerpo `{description, project_type, detail_level,
+  output_format}` producido por un **formulario** en el cliente.
+- Los prompts salen del código a **templates Jinja2 versionados** bajo
+  `app/prompts/estimation/v1/` (system, user, examples). El `loader.py`
+  es el único punto que toca los templates.
+- El cliente Streamlit pasa de chat conversacional a **formulario con
+  `st.form`**, captura los parámetros tipados y hace POST al backend.
+- El endpoint `POST /api/v1/estimate/stream` (SSE) de session-03 **se
+  mantiene intacto** con su schema legacy y su flujo de streaming —
+  pendiente de migración o eliminación en session-04.
+
+Las cinco capas de session-03 (wrapper LiteLLM con fallback, cache
+exact-match Redis, SSE, structlog con request_id, Streamlit como
+cliente HTTP puro) siguen exactamente igual.
 
 ---
 
@@ -69,13 +81,14 @@ uv run uvicorn app.main:app --reload
 
 ---
 
-## Interfaz conversacional (Streamlit)
+## Interfaz de producto (Streamlit con formulario)
 
 `streamlit_app.py` es un **cliente HTTP puro**: no importa nada de
-`app.*`. Consume el endpoint SSE `/api/v1/estimate/stream` del backend
-FastAPI vía `httpx`. El contrato entre frontend y backend es solo HTTP
-+ SSE — si mañana el frontend cambia a Next.js o Vue, el backend no se
-toca.
+`app.*`. A partir de pre-session-04 ya no es un chat conversacional:
+es un **formulario** con `st.form` que captura parámetros tipados y
+hace `POST /api/v1/estimate` al backend con el nuevo schema. La
+respuesta llega de golpe tras un `st.spinner` — sin streaming token
+a token.
 
 ### Arrancar el sistema completo
 
@@ -96,23 +109,28 @@ uv run streamlit run streamlit_app.py
 - Swagger UI: http://localhost:8000/docs
 - Streamlit: http://localhost:8501
 
-### Funcionalidad
+### Campos del formulario
 
-- Chat con persistencia de mensajes dentro de la sesión del navegador.
-- Streaming token a token consumiendo SSE (`st.write_stream` sobre el
-  iterador de `httpx.stream`).
-- En **cache hit**, la respuesta llega instantánea en un único chunk.
-- Si el backend está caído, se muestra un error claro y la página no
-  se queda colgada.
-
-### Qué cambia respecto a `pre-session-03`
-
-| Aspecto | pre-session-03 | session-03 |
+| Campo | Widget | Mapeo |
 |---|---|---|
-| Imports | `from app.services...` | Solo `httpx`, `streamlit`, `dotenv` |
-| Cómo llama al LLM | SDK directo en el Streamlit | HTTP SSE al backend |
-| Multi-turn | Sí (envía historial) | No (single-shot por petición) |
-| Selección de proveedor | `LLM_PROVIDER` en el Streamlit | El backend decide vía LiteLLM Router |
+| Project description | `st.text_area` (20–2000 chars) | `description` |
+| Project type | `st.selectbox` | `mobile_app` / `web_saas` / `internal_tool` / `data_pipeline` |
+| Output format | `st.selectbox` | `phases_table` / `line_items` / `narrative` |
+| Detail level | `st.radio` horizontal | `summary` / `medium` / `detailed` |
+
+Al enviar el formulario se hace `POST /api/v1/estimate`. La última
+estimación se persiste en `st.session_state.last_result` para que
+sobreviva a reruns parciales de Streamlit (cambiar un selectbox tras
+recibir una respuesta no la borra de la pantalla).
+
+### Qué cambia respecto a `session-03`
+
+| Aspecto | session-03 | pre-session-04 |
+|---|---|---|
+| UX del cliente | Chat conversacional | Formulario tipado |
+| Endpoint consumido | `/api/v1/estimate/stream` (SSE) | `/api/v1/estimate` (POST + JSON) |
+| Streaming | Sí, token a token | No, respuesta de golpe con spinner |
+| Construcción del prompt | `build_legacy_system_prompt` con f-strings | `render_estimation_prompt` con Jinja2 versionado |
 
 ---
 
@@ -145,134 +163,98 @@ uv run streamlit run streamlit_app.py
 
 ---
 
-## Parámetros del request
+## Request y respuesta del endpoint principal
 
-`POST /api/v1/estimate` acepta un cuerpo JSON con los siguientes campos.
-Sólo `transcription` es obligatorio.
+`POST /api/v1/estimate` acepta un cuerpo JSON con cuatro campos, todos
+obligatorios:
 
-| Campo | Tipo | Default | Descripción |
-|---|---|---|---|
-| `transcription` | string (≥50) | — | Transcripción de la reunión. |
-| `num_examples` | int 0..5 | `3` | Cuántos ejemplos CAG inyectar. `0` = sin contexto. |
-| `example_format` | `"markdown"` | `"markdown"` | Formato de serialización de los ejemplos. |
-| `preprocessing` | `"none" \| "inline_cleaning" \| "two_phase"` | `"none"` | Estrategia de limpieza de la transcripción. |
-| `model` | string \| null | `null` | Override del modelo. Si es `null`, usa `LLM_MODEL`. |
-| `max_tokens` | int 1..16000 | `4000` | Máximo de tokens de salida. |
-| `temperature` | float 0..2 | `0.3` | Temperatura de muestreo (ignorada con thinking en Anthropic). |
-| `thinking_budget` | int 0..8000 | `0` | Budget de extended thinking (sólo Anthropic Claude 4.x). |
-| `output_format` | `"markdown" \| "json"` | `"markdown"` | Formato exigido al LLM. |
-| `usage` | bool | `true` | Incluir desglose de tokens en la respuesta. |
-| `evaluation` | bool | `true` | Ejecutar evaluación estructural nivel 1. |
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `description` | string (20–2000) | Descripción libre del proyecto. |
+| `project_type` | enum | `mobile_app` / `web_saas` / `internal_tool` / `data_pipeline` |
+| `detail_level` | enum | `summary` / `medium` / `detailed` |
+| `output_format` | enum | `phases_table` / `line_items` / `narrative` |
 
-### Estrategias de preprocesado
-
-- **`none`**: la transcripción se envía tal cual al modelo de
-  estimación. Más rápido y barato.
-- **`inline_cleaning`**: se prepende un bloque de instrucciones al
-  system prompt indicando al modelo que ignore mentalmente las
-  divagaciones, interrupciones y ruido típicos de una reunión. Una sola
-  llamada al LLM.
-- **`two_phase`**: dos llamadas. La primera extrae los requisitos
-  limpios y deduplicados; la segunda genera la estimación a partir de
-  esos requisitos. Mayor latencia y coste, pero el input de la
-  estimación viene ya destilado. La salida de la primera fase se
-  devuelve en el campo `extracted_requirements`.
-
----
-
-## Estructura de la respuesta
-
-Ejemplo abreviado de `EstimationResponse`:
+La respuesta es minimal:
 
 ```json
 {
-  "estimation": "## Estimación: ...\n\n### Desglose de tareas\n...",
-  "model": "claude-haiku-4-5-20251001",
-  "provider": "anthropic",
-  "finish_reason": "end_turn",
-  "preprocessing_type": "none",
-  "output_format": "markdown",
-  "latency_ms": 4218,
-  "token_usage": {
-    "input_tokens": 1842,
-    "output_tokens": 612,
-    "total_tokens": 2454,
-    "preprocessing_input_tokens": 0,
-    "preprocessing_output_tokens": 0
-  },
-  "extracted_requirements": null,
-  "evaluation": {
-    "has_title": true,
-    "has_breakdown_table": true,
-    "has_total_sections": true,
-    "has_team_sections": true,
-    "has_duration_sections": true,
-    "declared_total_hours": 175,
-    "sum_row_hours": 175,
-    "hours_match": true,
-    "finish_reason_ok": true,
-    "score": 1.0,
-    "issues": []
-  }
+  "text": "| phase | duration_weeks | cost_eur | ...",
+  "prompt_version": "v1"
 }
 ```
 
-- **`evaluation.score`** es un float entre `0.0` y `1.0`, promedio
-  simple de 7 chequeos booleanos:
-  `has_title`, `has_breakdown_table`, `has_total_sections`,
-  `has_team_sections`, `has_duration_sections`, `hours_match`,
-  `finish_reason_ok`.
-- **`evaluation.issues`** es la lista de problemas detectados en
-  lenguaje natural (vacía si todo está bien).
-- **`finish_reason`** refleja la razón de finalización tal como la
-  reporta el SDK (`"stop"`, `"end_turn"`, `"max_tokens"`, `"length"`,
-  etc.). El evaluator considera `"stop"` y `"end_turn"` como OK.
+`prompt_version` permite saber qué subdirectorio bajo
+`app/prompts/estimation/` produjo la respuesta. Útil para A/B testing y
+para depurar regresiones cuando se introduce un `v2/`.
+
+> **Nota**: features de session-02 (preprocessing, evaluation,
+> thinking_budget, token_usage, cache_hit, output_format=json) **se
+> eliminaron del endpoint /estimate**. Reaparecerán en session-04 con un
+> diseño nuevo basado en structured outputs y guardrails. Mientras
+> tanto, `evaluation_service.py` y `context/examples.py` quedan en
+> standby, alimentando solo el endpoint legacy `/estimate/stream`.
+
+Ejemplo de uso con curl:
+
+```bash
+./examples/example-form-request.sh
+```
 
 ---
 
-## Demos de la sesión en vivo
+## Estructura de prompts (Jinja2)
 
-La carpeta `examples/` contiene 10 scripts `curl + jq` que reproducen
-las pruebas que se hicieron en la sesión. Para ejecutarlos, levanta el
-servicio con Docker y verifica precondiciones:
+Los prompts viven en `app/prompts/`:
 
-```bash
-docker compose up --build -d
-./examples/00_setup.sh   # verifica que jq existe y /health responde
+```
+app/prompts/
+├── loader.py                       ← único punto que toca los templates
+└── estimation/
+    └── v1/
+        ├── system.j2               ← rol del modelo + reglas de output
+        ├── user.j2                 ← envoltorio mínimo de la description
+        └── examples.j2             ← 3 few-shot examples
 ```
 
-| Script | Qué demuestra |
-|---|---|
-| `01_basic.sh` | Llamada base con todos los defaults. |
-| `02_no_examples.sh` | `num_examples=0`: sin CAG, score esperado bajo. |
-| `03_one_example.sh` | `num_examples=1`: score sube notablemente. |
-| `04_three_examples.sh` | `num_examples=3`: el "punto dulce". |
-| `05_five_examples.sh` | `num_examples=5`: saturación de contexto. |
-| `06_inline_cleaning.sh` | Preprocesado inline sobre la transcripción larga. |
-| `07_two_phase.sh` | Preprocesado en dos fases; ver `extracted_requirements`. |
-| `08_thinking_budget.sh` | Extended thinking en Anthropic con budget 2000. |
-| `09_truncation.sh` | `max_tokens=200`: fuerza truncado, `finish_reason_ok=false`. |
-| `10_json_output.sh` | `output_format="json"`: el evaluator parsea JSON. |
+Diseño del `Environment` de Jinja2 en `loader.py`:
 
-Para inspeccionar sólo el score y los issues de cualquier script:
+- **`StrictUndefined`**: si un template referencia una variable no
+  provista, el render rompe con `UndefinedError` en lugar de generar un
+  prompt malformado silenciosamente.
+- **`trim_blocks` + `lstrip_blocks`**: los bloques `{% %}` no
+  introducen saltos de línea espurios.
+- **`FileSystemLoader(app/prompts/)`**: permite usar `{% include "..." %}`
+  desde cualquier subdirectorio.
 
-```bash
-./examples/04_three_examples.sh | jq '.evaluation.score, .evaluation.issues'
-```
+Versionado: para iterar en un prompt sin tocar el existente, copia
+`v1/` a `v2/`, modifica, y cambia el parámetro `version="v2"` en el
+loader o en el llamador. Esto permite A/B testing y rollback rápido.
+En esta rama solo existe `v1/`.
 
 ---
 
 ## Tests
 
 ```bash
-# Dentro del contenedor
-docker compose exec estimator uv run pytest -v
+# Solo los tests del template (no tocan APIs externas, < 1s):
+uv run pytest tests/prompts/ -v
 
-# O local
+# Todos los tests (incluye health, requiere el .venv configurado):
+uv run pytest -v
+
+# Dentro del contenedor (los tests/ no están copiados; usar local):
 uv run pytest
 ```
 
-En esta rama sólo se mantiene `tests/test_health.py`.
+En esta rama hay:
+
+- `tests/test_health.py` — heredado de pre-session-02.
+- `tests/prompts/test_estimation_v1.py` — 6 tests sobre el render del
+  template Jinja2: interpolación literal de `description`, ramas de
+  `output_format`, instrucción condicional de `detail_level`,
+  humanización del `project_type`, inclusión del bloque `<examples>`,
+  comportamiento de `StrictUndefined`.
 
 ---
 
@@ -281,23 +263,24 @@ En esta rama sólo se mantiene `tests/test_health.py`.
 | Método | Path | Schema | Notas |
 |---|---|---|---|
 | `GET` | `/health` | — | Health check |
-| `POST` | `/api/v1/estimate` | `EstimationRequest` → `EstimationResponse` | Mantiene todas las features de session-02 (preprocessing, evaluation, JSON output, thinking_budget). La respuesta incluye `cache_hit`. |
-| `POST` | `/api/v1/estimate/stream` | `StreamEstimationRequest` → SSE | Deliberadamente simple: solo `transcription` y `num_examples`. Eventos `delta` / `done` / `error`. |
+| `POST` | `/api/v1/estimate` | `EstimationRequest` → `EstimationResponse` | **Schema nuevo** desde pre-session-04: `{description, project_type, detail_level, output_format}` → `{text, prompt_version}`. Prompt renderizado vía Jinja2. |
+| `POST` | `/api/v1/estimate/stream` | `StreamEstimationRequest` → SSE | **Legacy de session-03**: acepta `{transcription, num_examples}`. Eventos `delta` / `done` / `error`. Pendiente de migración o eliminación en session-04. |
 
-### Por qué dos endpoints
+### Por qué dos endpoints (estado transicional)
 
-`/estimate` y `/estimate/stream` cubren casos de uso distintos:
+Esta rama deja el proyecto en un estado **intencionadamente híbrido**:
 
-- `/estimate` es la API de poder: control fino del request, evaluación
-  automática, preprocesado opcional, JSON estructurado. Ideal para
-  pipelines automáticos y benchmarks.
-- `/estimate/stream` es la API de UX: respuesta inmediata, cache hit
-  instantáneo, parámetros mínimos. Optimizada para clientes
-  conversacionales (Streamlit, web, móvil).
+- `/estimate` es el endpoint nuevo del producto: formulario tipado,
+  prompt compuesto con templates versionados.
+- `/estimate/stream` se mantiene intacto desde session-03 para no
+  perder la infraestructura de streaming, aunque ningún cliente del
+  proyecto lo consume ya.
 
-Mezclar las dos contamina ambas: un endpoint con preprocesado +
-streaming tendría latencias impredecibles y eventos SSE mezclando
-fases. Antonio fue explícito sobre esto en la sesión live.
+En session-04 (sesión en vivo) habrá que decidir si se migra el stream
+al nuevo schema, se sustituye por uno compatible con Instructor +
+structured outputs, o se elimina directamente. Hasta entonces, los dos
+schemas coexisten — los del legacy con prefijo `Legacy*` en
+`app/schemas/legacy_estimation.py` para que la separación sea obvia.
 
 ---
 
@@ -360,28 +343,28 @@ Eventos clave a vigilar:
 
 ```
 HTTP POST /api/v1/estimate                  HTTP POST /api/v1/estimate/stream
-        │                                            │
-        ▼                                            ▼
-  Router (delgado)                             Router (con bridge sync→async)
-        │                                            │
-        ▼                                            ▼
-  generate_estimation(request)              wrapper.complete_stream(...)
-        │                                            │ (iterador sync)
-        ├─[ if preprocessing == two_phase ]          │
-        │      └── wrapper.complete()                ├─ loop.run_in_executor()
-        │                                            │   (thread productor)
-        ├── build_system_prompt(deterministic=False) │
-        │                                            ├─ asyncio.Queue
-        ├── wrapper.complete(...)                    │   (puente entre thread y loop)
-        │                                            │
-        ├─[ if evaluation ]                          ▼
-        │      └── evaluate_estimation()       sse_starlette.EventSourceResponse
-        │                                            │
-        └── EstimationResponse(...)                  ▼
-              + cache_hit                       chunks SSE al cliente
+        │ (nuevo schema tipado)                       │ (schema legacy)
+        ▼                                             ▼
+  Router (delgado)                              Router (bridge sync→async)
+        │                                             │
+        ▼                                             ▼
+  generate_estimation(request)               wrapper.complete_stream(...)
+        │                                             │ (iterador sync)
+        ▼                                             │
+  render_estimation_prompt(request, v1)               ├─ loop.run_in_executor()
+        │                                             │   (thread productor)
+        ├── app/prompts/estimation/v1/system.j2       │
+        ├── app/prompts/estimation/v1/user.j2         ├─ asyncio.Queue
+        │   {% include estimation/v1/examples.j2 %}   │
+        │                                             ▼
+        ▼                                       sse_starlette.EventSourceResponse
+  wrapper.complete(system, user, ...)                 │
+        │                                             ▼
+        ▼                                       chunks SSE al cliente
+  EstimationResponse(text, prompt_version)
 
 
-Wrapper (app/core/llm_wrapper.py):
+Wrapper (app/core/llm_wrapper.py) — sin cambios desde session-03:
         ┌────────────────────────────────────────┐
         │ 1. _make_cache_key (SHA-256)           │
         │ 2. ExactMatchCache.get(key) → hit?     │
@@ -396,18 +379,32 @@ Wrapper (app/core/llm_wrapper.py):
 
 ### Decisiones de la rama
 
-- **Wrapper completamente síncrono**: `complete` y `complete_stream`
-  son síncronos. El puente al event loop async vive solo en el
-  endpoint stream (`run_in_executor` + `asyncio.Queue`). Patrón
-  consistente con el material del curso.
-- **Toda llamada al LLM pasa por el wrapper**. Si encuentras un
-  `litellm.completion(...)` fuera de `app/core/llm_wrapper.py`, es un
-  bug.
-- **`/estimate/stream` solo acepta `transcription` y `num_examples`**.
-  Sin preprocessing, sin evaluation, sin thinking_budget. Por diseño.
-- **Selección determinista de ejemplos en el endpoint stream**: sin
-  esto, la cache no haría hits nunca.
-- **La cache es best-effort**. Errores de Redis nunca rompen
-  requests; solo log warnings.
-- **Streamlit nunca importa de `app.*`**. Solo `httpx`, `streamlit`,
-  `dotenv`.
+- **Borrón y cuenta nueva en `/estimate`**: el schema viejo no se
+  preserva, no hay backwards compatibility. Las features de session-02
+  (preprocessing, evaluation, thinking_budget, etc.) desaparecen del
+  endpoint principal y reaparecerán en session-04 con un diseño nuevo.
+- **El loader es el único punto que toca los templates**. Si encuentras
+  `_env.from_string(...)` o `open()` de archivos `.j2` fuera de
+  `app/prompts/loader.py`, es un bug.
+- **`StrictUndefined` siempre activo**: render rompe con error si una
+  variable no está definida. Detecta typos y refactors a medias.
+- **`evaluation_service.py` y `context/examples.py` quedan en standby**:
+  no se invocan, pero siguen compilando con imports al paquete
+  `legacy_estimation`.
+- **El Streamlit pasa de chat a formulario** y **deja de consumir
+  SSE**. La UX de streaming queda solo en el endpoint legacy hasta que
+  session-04 decida qué hacer con él.
+
+---
+
+## Qué entra en session-04
+
+- **Structured outputs** con Instructor + Pydantic para forzar JSON
+  validado en lugar de texto libre.
+- **Guardrails** de input/output: Moderation API, validators de PII,
+  scope checks, LLM-as-judge.
+- **Cache semántico** con embeddings + `redisvl.SemanticCache`, en
+  paralelo al cache exact-match actual.
+- **Decisión sobre `/estimate/stream`** y `legacy_estimation.py`:
+  migrar, reemplazar o eliminar.
+- **Posible extracción del Streamlit** a otro proyecto separado.
