@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from app.schemas.estimation import OutputFormat, StructureCheck
+from app.schemas.legacy_estimation import LegacyOutputFormat, StructureCheck
 
 
 # Reasons de éxito por proveedor:
@@ -27,7 +27,7 @@ _HOURS_MATCH_TOLERANCE = 0.05  # 5%
 
 def evaluate_estimation(
     estimation_text: str,
-    output_format: OutputFormat,
+    output_format: LegacyOutputFormat,
     finish_reason: str,
 ) -> StructureCheck:
     """Evalúa la estructura del output del LLM y devuelve un StructureCheck.
@@ -38,7 +38,7 @@ def evaluate_estimation(
     """
     issues: list[str] = []
 
-    if output_format == OutputFormat.JSON:
+    if output_format == LegacyOutputFormat.JSON:
         result = _evaluate_json(estimation_text, issues)
     else:
         result = _evaluate_markdown(estimation_text, issues)

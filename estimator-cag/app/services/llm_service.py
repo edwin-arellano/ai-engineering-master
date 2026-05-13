@@ -1,28 +1,86 @@
-"""Servicio de generación de estimaciones usando el LLM wrapper."""
+"""Servicio LLM.
+
+Tras pre-session-04 el módulo expone dos rutas distintas:
+
+- `generate_estimation(...)`: flujo nuevo del endpoint /api/v1/estimate.
+  Renderiza el prompt vía el loader Jinja2 (`render_estimation_prompt`)
+  y delega en `LLMWrapper.complete(...)`.
+
+- `build_legacy_system_prompt(...)` + constantes: flujo legacy de
+  session-02/03 que sigue usando el endpoint /api/v1/estimate/stream.
+  Eliminar cuando ese endpoint se migre o desaparezca.
+"""
 
 from __future__ import annotations
 
 import random
-import time
 
 import structlog
 
-from app.context.examples import ESTIMATION_EXAMPLES
+from app.config import get_settings
+from app.context.examples import ESTIMATION_EXAMPLES  # legacy, sigue alimentando el stream
 from app.core.llm_wrapper import LLMWrapper
-from app.schemas.estimation import (
-    EstimationRequest,
-    EstimationResponse,
-    ExampleFormat,
-    OutputFormat,
-    PreprocessingType,
-    TokenUsage,
+from app.prompts.loader import render_estimation_prompt
+from app.schemas.estimation import EstimationRequest, EstimationResponse
+from app.schemas.legacy_estimation import (
+    LegacyExampleFormat,
+    LegacyOutputFormat,
+    LegacyPreprocessingType,
 )
-from app.services.evaluation_service import evaluate_estimation
 
 logger = structlog.get_logger()
 
 
-# === System prompt building blocks ===
+# === Wrapper singleton (compartido entre los dos flujos) ===
+
+_wrapper: LLMWrapper | None = None
+
+
+def get_wrapper() -> LLMWrapper:
+    """Devuelve el singleton del wrapper, instanciándolo en la primera llamada."""
+    global _wrapper
+    if _wrapper is None:
+        _wrapper = LLMWrapper()
+    return _wrapper
+
+
+# === Flujo nuevo (pre-session-04): generate_estimation con loader Jinja2 ===
+
+async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
+    """Genera una estimación a partir del nuevo schema tipado.
+
+    Flujo:
+    1. Renderiza system y user del template Jinja2 versionado (v1 por defecto).
+    2. Llama al wrapper (LiteLLM Router con fallback y cache).
+    3. Devuelve el texto del LLM con la versión del prompt.
+
+    Todas las features de session-02 (preprocessing, evaluation,
+    thinking_budget, etc.) han desaparecido. Si en session-04 reaparecen,
+    será con un diseño nuevo basado en structured outputs y guardrails.
+    """
+    wrapper = get_wrapper()
+    settings = get_settings()
+    prompt_version = "v1"
+
+    system_prompt, user_message = render_estimation_prompt(
+        request, version=prompt_version
+    )
+
+    llm_result = wrapper.complete(
+        system_prompt=system_prompt,
+        user_message=user_message,
+        max_tokens=settings.llm_max_tokens,
+        temperature=settings.llm_temperature,
+    )
+
+    return EstimationResponse(
+        text=llm_result["text"],
+        prompt_version=prompt_version,
+    )
+
+
+# === Flujo legacy (session-02/03): build_legacy_system_prompt + constantes ===
+# Sigue usado por /api/v1/estimate/stream. NO eliminar hasta migrar el stream.
 
 _INLINE_CLEANING_BLOCK = """\
 === INPUT PREPROCESSING INSTRUCTION ===
@@ -99,39 +157,19 @@ Rules:
 """
 
 
-_REQUIREMENTS_EXTRACTION_SYSTEM = """\
-You are a senior business analyst with 15+ years of experience
-reading software development meeting transcripts. Your job is to
-read the transcript provided by the user and produce a clean,
-deduplicated list of:
-
-1. Functional requirements — what the system must DO.
-2. Non-functional requirements — performance, security, accessibility,
-   technology constraints, deployment, etc.
-3. Project constraints — timeline, budget, team composition, integrations.
-
-Output as a Markdown document with three sections (one per category),
-each with a bulleted list. Be concise, do not include personal
-divagations, off-topic comments, jokes, or interruptions. Do NOT
-estimate anything — only extract the requirements as stated.
-"""
-
-
-def _format_examples(
+def _format_legacy_examples(
     num_examples: int,
-    example_format: ExampleFormat,
+    example_format: LegacyExampleFormat,
     deterministic: bool = False,
 ) -> str:
-    """Formatea N ejemplos. Selección aleatoria por defecto, determinista si se pide.
+    """Formatea N ejemplos few-shot. Random por defecto, determinista si se pide.
 
-    `deterministic=True` selecciona los primeros N ejemplos en orden. Esto es
-    necesario para el endpoint /estimate/stream: sin determinismo, dos llamadas
-    idénticas producirían system prompts distintos (por random.sample) y la
-    cache exact-match nunca haría hit.
+    `deterministic=True` selecciona los primeros N ejemplos en orden, necesario
+    para que el endpoint /estimate/stream produzca cache hits estables.
     """
-    if example_format != ExampleFormat.MARKDOWN:
+    if example_format != LegacyExampleFormat.MARKDOWN:
         raise NotImplementedError(
-            f"example_format={example_format!r} no soportado en session-03"
+            f"example_format={example_format!r} no soportado en el flujo legacy"
         )
 
     if num_examples <= 0:
@@ -153,139 +191,35 @@ def _format_examples(
             f"Estimation:\n{example['estimation']}"
         )
     blocks.append("===== END OF REFERENCE ESTIMATIONS =====")
-
     return "\n\n".join(blocks)
 
 
-def build_system_prompt(
+def build_legacy_system_prompt(
     num_examples: int,
-    example_format: ExampleFormat,
-    output_format: OutputFormat,
-    preprocessing: PreprocessingType,
+    example_format: LegacyExampleFormat,
+    output_format: LegacyOutputFormat,
+    preprocessing: LegacyPreprocessingType,
     deterministic: bool = False,
 ) -> str:
-    """Compone el system prompt según las opciones del request.
+    """Compone el system prompt del flujo legacy (sin cambios funcionales).
 
-    `deterministic=True` se usa desde el endpoint /estimate/stream para que la
-    cache exact-match funcione (mismo input → misma respuesta cacheable).
+    Solo lo invoca el endpoint /api/v1/estimate/stream. El endpoint
+    /api/v1/estimate ya no pasa por aquí: usa el loader Jinja2.
     """
     parts: list[str] = []
 
-    if preprocessing == PreprocessingType.INLINE_CLEANING:
+    if preprocessing == LegacyPreprocessingType.INLINE_CLEANING:
         parts.append(_INLINE_CLEANING_BLOCK)
 
     parts.append(_BASE_SYSTEM_PROMPT)
 
-    if output_format == OutputFormat.JSON:
+    if output_format == LegacyOutputFormat.JSON:
         parts.append(_JSON_OUTPUT_INSTRUCTIONS)
     else:
         parts.append(_MARKDOWN_OUTPUT_INSTRUCTIONS)
 
-    examples_block = _format_examples(num_examples, example_format, deterministic)
+    examples_block = _format_legacy_examples(num_examples, example_format, deterministic)
     if examples_block:
         parts.append(examples_block)
 
     return "\n\n".join(parts)
-
-
-# === Wrapper singleton ===
-
-_wrapper: LLMWrapper | None = None
-
-
-def get_wrapper() -> LLMWrapper:
-    """Devuelve el singleton del wrapper, instanciándolo en la primera llamada."""
-    global _wrapper
-    if _wrapper is None:
-        _wrapper = LLMWrapper()
-    return _wrapper
-
-
-# === Public API ===
-
-async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
-    """Orquesta el flujo completo del endpoint /estimate (no-stream).
-
-    Mantiene todas las features de session-02: preprocessing inline/two-phase,
-    evaluation estructural, num_examples random, thinking_budget,
-    output_format markdown/json.
-
-    Lo único que cambia respecto a session-02 es que la llamada al LLM pasa
-    por el wrapper LiteLLM en lugar de _call_anthropic/_call_openai directos.
-    """
-    wrapper = get_wrapper()
-    started_at = time.time()
-
-    # === Fase 1: preprocesado opcional ===
-    extracted_requirements: str | None = None
-    preprocessing_input_tokens = 0
-    preprocessing_output_tokens = 0
-
-    if request.preprocessing == PreprocessingType.TWO_PHASE:
-        extraction = wrapper.complete(
-            system_prompt=_REQUIREMENTS_EXTRACTION_SYSTEM,
-            user_message=request.transcription,
-            max_tokens=2000,
-            temperature=0.2,
-            thinking_budget=0,
-        )
-        extracted_requirements = extraction["text"]
-        preprocessing_input_tokens = extraction["input_tokens"]
-        preprocessing_output_tokens = extraction["output_tokens"]
-
-    # === Fase 2: construcción del system prompt ===
-    # NOTA: deterministic=False (default) mantiene el comportamiento random
-    # de session-02 para preservar el demo del punto de saturación.
-    system_prompt = build_system_prompt(
-        num_examples=request.num_examples,
-        example_format=request.example_format,
-        output_format=request.output_format,
-        preprocessing=request.preprocessing,
-        deterministic=False,
-    )
-
-    # === Fase 3: llamada al LLM vía wrapper ===
-    user_input = extracted_requirements or request.transcription
-    llm_result = wrapper.complete(
-        system_prompt=system_prompt,
-        user_message=user_input,
-        max_tokens=request.max_tokens,
-        temperature=request.temperature,
-        thinking_budget=request.thinking_budget,
-    )
-
-    # === Fase 4: evaluación opcional ===
-    evaluation = None
-    if request.evaluation:
-        evaluation = evaluate_estimation(
-            estimation_text=llm_result["text"],
-            output_format=request.output_format,
-            finish_reason=llm_result["finish_reason"],
-        )
-
-    # === Fase 5: construcción de la respuesta ===
-    latency_ms = int((time.time() - started_at) * 1000)
-
-    token_usage = None
-    if request.usage:
-        token_usage = TokenUsage(
-            input_tokens=llm_result["input_tokens"],
-            output_tokens=llm_result["output_tokens"],
-            total_tokens=llm_result["input_tokens"] + llm_result["output_tokens"],
-            preprocessing_input_tokens=preprocessing_input_tokens,
-            preprocessing_output_tokens=preprocessing_output_tokens,
-        )
-
-    return EstimationResponse(
-        estimation=llm_result["text"],
-        model=llm_result["model"],
-        provider=llm_result["provider"],
-        finish_reason=llm_result["finish_reason"],
-        preprocessing_type=request.preprocessing,
-        output_format=request.output_format,
-        latency_ms=latency_ms,
-        token_usage=token_usage,
-        extracted_requirements=extracted_requirements,
-        evaluation=evaluation,
-        cache_hit=llm_result.get("cache_hit", False),
-    )
