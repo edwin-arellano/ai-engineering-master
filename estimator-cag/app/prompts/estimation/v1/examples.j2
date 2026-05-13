@@ -1,0 +1,84 @@
+<examples>
+
+<example>
+<input>
+project_type: mobile_app
+detail_level: detailed
+output_format: phases_table
+
+A fitness tracking mobile app for iOS and Android. Users sign up with
+email or Apple/Google SSO, log workouts manually or via Apple Health /
+Google Fit, see weekly progress charts, and receive daily reminders.
+The app integrates with Stripe for a premium tier (advanced analytics,
+custom training plans). Target launch: 4 months.
+</input>
+<output>
+| phase                         | duration_weeks | cost_eur | confidence_pct |
+|-------------------------------|----------------|----------|----------------|
+| Discovery & UX design         | 3              | 12000    | 80             |
+| Auth (email + SSO)            | 2              | 8000     | 85             |
+| Workout logging core          | 4              | 18000    | 70             |
+| HealthKit / Google Fit sync   | 3              | 14000    | 60             |
+| Charts & dashboards           | 2              | 9000     | 75             |
+| Stripe + premium gating       | 2              | 9000     | 80             |
+| Push notifications & QA       | 2              | 7000     | 75             |
+| **Totals**                    | **18**         | **77000**| —              |
+
+Assumptions:
+- Single product team of 1 PM, 2 mobile devs, 1 backend dev, 1 designer.
+- React Native or Flutter; cross-platform from a single codebase.
+- Stripe Checkout (hosted), no custom in-app purchase yet.
+
+Risks:
+- HealthKit / Google Fit edge cases on older OS versions could add 1–2 weeks.
+- App Store / Play Store review cycles not modelled in the totals.
+</output>
+</example>
+
+<example>
+<input>
+project_type: web_saas
+detail_level: medium
+output_format: line_items
+</input>
+<output>
+- **Auth + multi-tenant org model** — 3 weeks, 13000 EUR, 75% confidence.
+  Driver: SSO with SAML for enterprise prospects requires extra setup.
+- **Inventory CRUD + bulk import** — 4 weeks, 16000 EUR, 80% confidence.
+  Driver: CSV import with validation is the bulk of effort, not the CRUD.
+- **Reporting dashboards (3 boards)** — 3 weeks, 12000 EUR, 70% confidence.
+  Driver: charting library integration and aggregation queries.
+- **Stripe billing + plan tiers** — 2 weeks, 9000 EUR, 85% confidence.
+  Driver: well-trodden path with Stripe Checkout.
+- **Admin tools and audit log** — 2 weeks, 8000 EUR, 75% confidence.
+  Driver: required for enterprise sales, often underestimated.
+- **QA + onboarding hardening** — 2 weeks, 6000 EUR, 80% confidence.
+  Driver: production polish before the first paying customer.
+- **Totals** — 16 weeks, 64000 EUR.
+</output>
+</example>
+
+<example>
+<input>
+project_type: internal_tool
+detail_level: summary
+output_format: narrative
+</input>
+<output>
+A CRM-style internal tool for the sales team should be deliverable in
+roughly 6 to 8 weeks at a cost between 22000 and 30000 EUR, assuming a
+small team of one full-stack developer and a part-time designer.
+
+The bulk of the effort lies in modelling the contact and pipeline
+entities, integrating with the existing email provider, and giving the
+sales reps a fast list view with inline editing. Reporting can stay
+minimal in the first release — pivot tables in the existing BI tool
+will cover most needs while the internal product matures.
+
+The main risks are integration scope creep (every sales rep will ask
+for "just one more" integration) and the temptation to add custom
+permissions per user role. Both can be deferred to a second release.
+</output>
+</example>
+
+</examples>
