@@ -6,13 +6,14 @@ usando arquitectura **CAG** (Cache Augmented Generation): el contexto
 de ejemplos previos se inyecta directamente en el system prompt en cada
 llamada — sin base de datos ni retrieval semántico.
 
-En la rama `session-02` el servicio evoluciona desde un scaffolding
-mínimo a una primera versión "production-aware": parametrizable por
-request (número de ejemplos, formato de salida, preprocesado de la
-transcripción, modelo override, extended thinking en Anthropic, etc.),
-con **evaluación estructural automática** del output, **dockerizado**
-para arranque uniforme, y con **scripts de demo** que reproducen las
-pruebas hechas en la sesión en vivo.
+En la rama `session-03` el servicio incorpora cinco capas que lo
+acercan a "producción": **wrapper LiteLLM** con fallback automático
+Anthropic ↔ OpenAI, **cache exact-match Redis** con TTL 24h, endpoint
+**`/api/v1/estimate/stream` con SSE** para respuesta token a token,
+**observabilidad estructurada** con `structlog` (request_id por
+petición, contexto vinculado, dual output dev/prod), y **Streamlit
+desacoplado** (cliente HTTP puro que consume el SSE, sin importar nada
+del backend).
 
 ---
 
@@ -70,66 +71,48 @@ uv run uvicorn app.main:app --reload
 
 ## Interfaz conversacional (Streamlit)
 
-A partir de la sesión 3, el proyecto incluye un cliente conversacional
-basado en **Streamlit** que reutiliza el system prompt y los ejemplos
-CAG del servicio FastAPI (misma fuente de verdad, importados
-directamente desde `app.services.llm_service` y `app.context.examples`).
+`streamlit_app.py` es un **cliente HTTP puro**: no importa nada de
+`app.*`. Consume el endpoint SSE `/api/v1/estimate/stream` del backend
+FastAPI vía `httpx`. El contrato entre frontend y backend es solo HTTP
++ SSE — si mañana el frontend cambia a Next.js o Vue, el backend no se
+toca.
 
-En esta rama (`pre-session-03`), el Streamlit **no** consume el endpoint
-FastAPI: hace sus propias llamadas en streaming directamente al SDK del
-proveedor configurado en `LLM_PROVIDER`.
+### Arrancar el sistema completo
 
-### Arrancar la UI
-
-El Streamlit se ejecuta **localmente** (no en Docker) para tener
-hot-reload rápido durante el desarrollo. El backend FastAPI puede estar
-arriba o no — el Streamlit no lo necesita en esta rama.
+Necesitas dos procesos: el backend (con Redis) en Docker, y el
+Streamlit local con hot-reload.
 
 ```bash
+# Terminal 1: backend FastAPI + Redis
+cd estimator-cag
+docker compose up --build
+
+# Terminal 2: Streamlit
 cd estimator-cag
 uv run streamlit run streamlit_app.py
 ```
 
-La UI queda accesible en `http://localhost:8501`.
+- Backend: http://localhost:8000
+- Swagger UI: http://localhost:8000/docs
+- Streamlit: http://localhost:8501
 
-### Funcionalidad disponible en esta rama
+### Funcionalidad
 
-- Chat conversacional con persistencia de historial dentro de la sesión
-  del navegador (`st.session_state.messages`).
-- Streaming token a token de la respuesta del LLM (`st.write_stream`).
-- System prompt construido con los defaults configurados en `.env`
-  (`DEFAULT_NUM_EXAMPLES`, `DEFAULT_OUTPUT_FORMAT`, `DEFAULT_PREPROCESSING`).
-- Proveedor seleccionable por `LLM_PROVIDER`:
-  - `anthropic` → SDK de Anthropic con `client.messages.stream(...)`.
-  - `openai` → SDK de OpenAI con `client.chat.completions.create(..., stream=True)`.
+- Chat con persistencia de mensajes dentro de la sesión del navegador.
+- Streaming token a token consumiendo SSE (`st.write_stream` sobre el
+  iterador de `httpx.stream`).
+- En **cache hit**, la respuesta llega instantánea en un único chunk.
+- Si el backend está caído, se muestra un error claro y la página no
+  se queda colgada.
 
-### Qué NO está disponible todavía
+### Qué cambia respecto a `pre-session-03`
 
-Lo siguiente entra en `session-03` (sesión en vivo):
-
-- Wrapper LiteLLM con fallback automático entre proveedores.
-- Cache exact-match con Redis.
-- Endpoint SSE en el backend (`POST /api/v1/estimate/stream`) que el
-  Streamlit pueda consumir.
-- Observabilidad con `structlog` y métricas estructuradas.
-- Sidebar (`st.sidebar`) con system prompt visible, ejemplos CAG
-  inyectados y métricas de la última llamada (Nivel 3 del ejercicio).
-
-### Cómo cambiar de proveedor sin tocar código
-
-Editar `estimator-cag/.env`:
-
-```env
-# Anthropic primario
-LLM_PROVIDER=anthropic
-LLM_MODEL=claude-haiku-4-5-20251001
-
-# o OpenAI
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-```
-
-Recargar la página del Streamlit y el cambio surte efecto.
+| Aspecto | pre-session-03 | session-03 |
+|---|---|---|
+| Imports | `from app.services...` | Solo `httpx`, `streamlit`, `dotenv` |
+| Cómo llama al LLM | SDK directo en el Streamlit | HTTP SSE al backend |
+| Multi-turn | Sí (envía historial) | No (single-shot por petición) |
+| Selección de proveedor | `LLM_PROVIDER` en el Streamlit | El backend decide vía LiteLLM Router |
 
 ---
 
@@ -137,21 +120,28 @@ Recargar la página del Streamlit y el cambio surte efecto.
 
 | Variable | Default | Descripción |
 |---|---|---|
-| `LLM_PROVIDER` | `anthropic` | Proveedor del LLM: `anthropic` o `openai` |
-| `LLM_MODEL` | `claude-haiku-4-5-20251001` | Modelo concreto del proveedor seleccionado |
+| `PRIMARY_MODEL` | `anthropic/claude-haiku-4-5-20251001` | Modelo primario en formato `<provider>/<model>` (LiteLLM) |
+| `FALLBACK_MODEL` | `openai/gpt-4o-mini` | Modelo al que LiteLLM Router rota si el primario falla |
+| `LLM_TIMEOUT_SECONDS` | `30` | Timeout por llamada al LLM |
+| `LLM_NUM_RETRIES` | `2` | Reintentos antes de activar fallback |
 | `LLM_TEMPERATURE` | `0.3` | Temperatura de muestreo (default) |
 | `LLM_MAX_TOKENS` | `4000` | Máximo de tokens en la respuesta (default) |
-| `ANTHROPIC_API_KEY` | *(vacío)* | API key de Anthropic |
+| `ANTHROPIC_API_KEY` | *(vacío)* | API key de Anthropic. Al menos UNA de las dos debe estar configurada o la app falla al arrancar. |
 | `OPENAI_API_KEY` | *(vacío)* | API key de OpenAI |
+| `REDIS_URL` | `redis://localhost:6379/0` | URL del Redis. En docker-compose se sobrescribe a `redis://redis:6379/0`. |
+| `CACHE_TTL_SECONDS` | `86400` | TTL de las entradas de cache (24h) |
+| `CACHE_ENABLED` | `true` | Si `false`, la cache se desactiva globalmente |
 | `DEFAULT_NUM_EXAMPLES` | `3` | Número de ejemplos a inyectar (informativo; el request manda) |
 | `DEFAULT_PREPROCESSING` | `none` | Estrategia de preprocesado por defecto |
 | `DEFAULT_OUTPUT_FORMAT` | `markdown` | Formato de salida por defecto |
-| `ENVIRONMENT` | `development` | Entorno de ejecución |
-| `LOG_LEVEL` | `INFO` | Nivel de logging |
+| `BACKEND_URL` | `http://localhost:8000` | URL del backend desde el Streamlit |
+| `ENVIRONMENT` | `development` | `development` → ConsoleRenderer; `production` → JSONRenderer |
+| `LOG_LEVEL` | `INFO` | Nivel mínimo de los logs estructurados |
 
-> Si cambias `LLM_PROVIDER`, recuerda actualizar `LLM_MODEL` para que
-> apunte a un modelo válido del nuevo proveedor (por ejemplo,
-> `gpt-4o-mini` si pasas a OpenAI).
+> Las variables `LLM_PROVIDER` y `LLM_MODEL` de session-02 quedaron
+> obsoletas: ahora un solo identificador con prefijo (`PRIMARY_MODEL`)
+> sustituye al par proveedor + modelo y se lo damos directamente a
+> LiteLLM Router.
 
 ---
 
@@ -286,50 +276,138 @@ En esta rama sólo se mantiene `tests/test_health.py`.
 
 ---
 
+## Endpoints disponibles
+
+| Método | Path | Schema | Notas |
+|---|---|---|---|
+| `GET` | `/health` | — | Health check |
+| `POST` | `/api/v1/estimate` | `EstimationRequest` → `EstimationResponse` | Mantiene todas las features de session-02 (preprocessing, evaluation, JSON output, thinking_budget). La respuesta incluye `cache_hit`. |
+| `POST` | `/api/v1/estimate/stream` | `StreamEstimationRequest` → SSE | Deliberadamente simple: solo `transcription` y `num_examples`. Eventos `delta` / `done` / `error`. |
+
+### Por qué dos endpoints
+
+`/estimate` y `/estimate/stream` cubren casos de uso distintos:
+
+- `/estimate` es la API de poder: control fino del request, evaluación
+  automática, preprocesado opcional, JSON estructurado. Ideal para
+  pipelines automáticos y benchmarks.
+- `/estimate/stream` es la API de UX: respuesta inmediata, cache hit
+  instantáneo, parámetros mínimos. Optimizada para clientes
+  conversacionales (Streamlit, web, móvil).
+
+Mezclar las dos contamina ambas: un endpoint con preprocesado +
+streaming tendría latencias impredecibles y eventos SSE mezclando
+fases. Antonio fue explícito sobre esto en la sesión live.
+
+---
+
+## Cache exact-match Redis
+
+Toda llamada al LLM pasa primero por la cache. La clave es un SHA-256
+sobre `{system_prompt, user_message, model, max_tokens, thinking_budget}`.
+TTL = 24h.
+
+| Caso | Comportamiento |
+|---|---|
+| Cache hit en `/estimate` | Respuesta inmediata con `cache_hit: true`. Sin llamada al LLM. |
+| Cache hit en `/estimate/stream` | Un único evento SSE `delta` con la respuesta completa, luego `done`. |
+| Redis caído al arrancar | `cache_connection_failed` en logs, `enabled=False`, app sigue funcionando sin cache. |
+| Redis cae a mid-flight | Los métodos `get`/`set` registran un warning y devuelven `None` / no-op. |
+
+### Cuándo hace hit `/estimate`
+
+`/estimate` usa **selección random de ejemplos** por defecto (preserva
+el demo del punto de saturación de session-02). Dos llamadas idénticas
+suelen producir cache miss porque el system prompt cambia al rotar los
+ejemplos. Hace hit solo cuando coinciden todos los parámetros y la
+selección random produce el mismo subset.
+
+### Cuándo hace hit `/estimate/stream`
+
+`/estimate/stream` usa **selección determinista** (`deterministic=True`):
+los primeros N ejemplos en el orden de `ESTIMATION_EXAMPLES`. La segunda
+llamada idéntica garantiza cache hit, mismo system prompt → misma clave.
+
+---
+
+## Observabilidad
+
+`structlog` configurado en `app.core.logging_config`. Dual output:
+
+- `ENVIRONMENT=development` → `ConsoleRenderer` coloreado.
+- `ENVIRONMENT=production` → `JSONRenderer` line-delimited.
+
+Cada request HTTP arrastra un `request_id` (UUID4 o el del header
+`X-Request-ID` si el cliente lo envía). El middleware lo bindea al
+contexto vía `structlog.contextvars`, así que **todos** los logs
+emitidos durante esa request lo llevan automáticamente.
+
+Eventos clave a vigilar:
+
+| Evento | Cuándo se emite |
+|---|---|
+| `cache_connected` | Al arrancar, si Redis responde al ping |
+| `cache_connection_failed` | Al arrancar, si Redis no está disponible |
+| `llm_cache_hit` | El wrapper encuentra la respuesta en cache |
+| `llm_call_started` / `llm_call_completed` | Ciclo de llamada al LLM (no-stream) |
+| `llm_stream_started` / `llm_stream_completed` | Ciclo de streaming |
+| `llm_call_failed` / `llm_stream_failed` | Error durante la llamada |
+| `stream_client_disconnected` | Cliente cerró el SSE antes del fin |
+
+---
+
 ## Arquitectura
 
-El flujo de una petición pasa por las siguientes fases dentro de
-`app.services.llm_service.generate_estimation`:
-
 ```
-HTTP POST /api/v1/estimate
-        │
-        ▼
-  Router (delgado)
-        │
-        ▼
-  generate_estimation(request)
-        │
-        ├─[ if preprocessing == two_phase ]
-        │      └── _extract_requirements()  ← 1ª llamada LLM
-        │
-        ├── build_system_prompt(
-        │      num_examples, example_format,
-        │      output_format, preprocessing)
-        │
-        ├── _call_llm(...)                 ← 2ª llamada LLM
-        │      ├── _call_anthropic(...)    ← extracts text blocks, normalizes
-        │      └── _call_openai(...)       ← extracts message.content, normalizes
-        │
-        ├─[ if evaluation ]
-        │      └── evaluate_estimation()   ← regex + parseo, sin IA
-        │
-        └── EstimationResponse(
-              estimation, model, provider,
-              finish_reason, latency_ms,
-              token_usage, evaluation, ...)
+HTTP POST /api/v1/estimate                  HTTP POST /api/v1/estimate/stream
+        │                                            │
+        ▼                                            ▼
+  Router (delgado)                             Router (con bridge sync→async)
+        │                                            │
+        ▼                                            ▼
+  generate_estimation(request)              wrapper.complete_stream(...)
+        │                                            │ (iterador sync)
+        ├─[ if preprocessing == two_phase ]          │
+        │      └── wrapper.complete()                ├─ loop.run_in_executor()
+        │                                            │   (thread productor)
+        ├── build_system_prompt(deterministic=False) │
+        │                                            ├─ asyncio.Queue
+        ├── wrapper.complete(...)                    │   (puente entre thread y loop)
+        │                                            │
+        ├─[ if evaluation ]                          ▼
+        │      └── evaluate_estimation()       sse_starlette.EventSourceResponse
+        │                                            │
+        └── EstimationResponse(...)                  ▼
+              + cache_hit                       chunks SSE al cliente
+
+
+Wrapper (app/core/llm_wrapper.py):
+        ┌────────────────────────────────────────┐
+        │ 1. _make_cache_key (SHA-256)           │
+        │ 2. ExactMatchCache.get(key) → hit?     │
+        │    └─ sí: yield text / return dict     │
+        │ 3. router.completion(...)              │
+        │    └─ LiteLLM Router: primary→fallback │
+        │ 4. normalize dict                      │
+        │ 5. ExactMatchCache.set(key, value)     │
+        │ 6. yield / return                      │
+        └────────────────────────────────────────┘
 ```
 
 ### Decisiones de la rama
 
-- **Sin abstracción de proveedores**: dispatch manual entre Anthropic
-  y OpenAI.
-- **Sin cache de respuestas**: cada petición llama al LLM.
-- **Sin streaming**: la respuesta se devuelve completa.
-- **Sin structured outputs forzados**: `output_format: "json"` se
-  apoya en instrucciones del prompt; el LLM puede fallar y devolver
-  Markdown, lo cual el evaluator detectará.
-- **Evaluación sólo nivel 1**: 100% determinista (regex, parseo,
-  aritmética). Niveles 2 y 3 entran en sesiones posteriores.
-- **Selección aleatoria de ejemplos**: cuando `num_examples < 5` se
-  hace `random.sample`.
+- **Wrapper completamente síncrono**: `complete` y `complete_stream`
+  son síncronos. El puente al event loop async vive solo en el
+  endpoint stream (`run_in_executor` + `asyncio.Queue`). Patrón
+  consistente con el material del curso.
+- **Toda llamada al LLM pasa por el wrapper**. Si encuentras un
+  `litellm.completion(...)` fuera de `app/core/llm_wrapper.py`, es un
+  bug.
+- **`/estimate/stream` solo acepta `transcription` y `num_examples`**.
+  Sin preprocessing, sin evaluation, sin thinking_budget. Por diseño.
+- **Selección determinista de ejemplos en el endpoint stream**: sin
+  esto, la cache no haría hits nunca.
+- **La cache es best-effort**. Errores de Redis nunca rompen
+  requests; solo log warnings.
+- **Streamlit nunca importa de `app.*`**. Solo `httpx`, `streamlit`,
+  `dotenv`.
