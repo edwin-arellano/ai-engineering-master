@@ -1,111 +1,99 @@
 """Cliente conversacional Streamlit para el servicio estimator-cag.
 
-Reutiliza el system prompt y los ejemplos CAG del servicio FastAPI
-(misma fuente de verdad) pero hace sus propias llamadas en streaming
-directamente al SDK del proveedor configurado en LLM_PROVIDER.
+Este archivo es deliberadamente un **cliente HTTP independiente** del backend:
+no importa nada de `app.*`. Consume el endpoint SSE `/api/v1/estimate/stream`
+del backend FastAPI vía httpx.
 
-En esta rama (`pre-session-03`) el Streamlit NO consume el endpoint
-FastAPI: hace sus propias llamadas al SDK porque las funciones del
-backend (`generate_estimation`) son no-streaming. La integración con
-el endpoint vía SSE entra en `session-03` (live).
+Diseño explicado por Antonio en la sesión live de S3:
+- Si el frontend se rompe, el API sigue respondiendo a otros clientes.
+- Si el día de mañana cambia el frontend (a Next.js, Vue, lo que sea), el
+  contrato HTTP del backend no se toca.
 """
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
+import httpx
 import streamlit as st
-from anthropic import Anthropic
-from openai import OpenAI
+from dotenv import load_dotenv
 
-from app.config import Settings, get_settings
-from app.schemas.estimation import ExampleFormat, OutputFormat, PreprocessingType
-from app.services.llm_service import build_system_prompt
+# Cargar .env del proyecto (mismas variables que usa el backend)
+load_dotenv()
 
 
-# === Streaming helpers ===
+# === Configuración ===
 
-def _stream_anthropic(
-    settings: Settings,
-    system: str,
-    messages: list[dict],
-    max_tokens: int,
-    temperature: float,
-) -> Iterator[str]:
-    """Genera la respuesta token a token desde Anthropic.
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+STREAM_ENDPOINT = f"{BACKEND_URL}/api/v1/estimate/stream"
+REQUEST_TIMEOUT = float(os.environ.get("STREAMLIT_TIMEOUT", "180"))
 
-    Usa el context manager `client.messages.stream(...)` y expone
-    el `text_stream`, que `st.write_stream` puede consumir directamente.
+
+# === SSE parsing y consumo del backend ===
+
+def _parse_sse_events(response: httpx.Response) -> Iterator[tuple[str, str]]:
+    """Parsea el stream SSE en tuplas (event_type, data).
+
+    httpx no tiene parser SSE integrado. Implementamos el mínimo necesario:
+    - `event: <tipo>` define el tipo del próximo evento.
+    - `data: <contenido>` añade contenido al evento actual (puede haber varias
+      líneas data; se concatenan con '\\n').
+    - Línea vacía = fin del evento, se emite.
+    - Líneas que empiezan por `:` son comentarios/heartbeats, se ignoran.
     """
-    if not settings.anthropic_api_key:
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY no está configurada en .env"
-        )
+    current_event = "message"
+    data_lines: list[str] = []
 
-    client = Anthropic(api_key=settings.anthropic_api_key)
-    with client.messages.stream(
-        model=settings.llm_model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        system=system,
-        messages=messages,
-    ) as stream:
-        yield from stream.text_stream
+    for line in response.iter_lines():
+        if line.startswith(":"):
+            continue
+        if not line:
+            if data_lines:
+                yield current_event, "\n".join(data_lines)
+                data_lines = []
+            current_event = "message"
+            continue
+        if line.startswith("event:"):
+            current_event = line[len("event:") :].lstrip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:") :].lstrip())
+
+    # Por si el stream termina sin línea vacía final
+    if data_lines:
+        yield current_event, "\n".join(data_lines)
 
 
-def _stream_openai(
-    settings: Settings,
-    system: str,
-    messages: list[dict],
-    max_tokens: int,
-    temperature: float,
-) -> Iterator[str]:
-    """Genera la respuesta token a token desde OpenAI Chat Completions.
+def stream_estimation(transcription: str) -> Iterator[str]:
+    """Consume el endpoint SSE y yield text chunks listos para `st.write_stream`.
 
-    El system prompt se prepende al array de mensajes (a diferencia de
-    Anthropic, donde el system va como parámetro separado).
+    Los eventos `event: delta` aportan texto. `event: done` cierra el stream.
+    `event: error` levanta RuntimeError con el mensaje del backend.
     """
-    if not settings.openai_api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY no está configurada en .env"
-        )
+    payload = {"transcription": transcription}
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
 
-    client = OpenAI(api_key=settings.openai_api_key)
-    full_messages = [{"role": "system", "content": system}] + messages
-
-    stream = client.chat.completions.create(
-        model=settings.llm_model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        messages=full_messages,
-        stream=True,
-    )
-    for chunk in stream:
-        content = chunk.choices[0].delta.content
-        if content:
-            yield content
-
-
-def _build_initial_system_prompt(settings: Settings) -> str:
-    """Construye el system prompt una sola vez por sesión.
-
-    Usa los defaults del servidor para num_examples, preprocessing y
-    output_format. La selección aleatoria de ejemplos en
-    `build_system_prompt` se fija al cachear el resultado en
-    `st.session_state`, por lo que el chat mantiene un prompt estable
-    a lo largo de la conversación.
-    """
-    return build_system_prompt(
-        num_examples=settings.default_num_examples,
-        example_format=ExampleFormat.MARKDOWN,
-        output_format=OutputFormat(settings.default_output_format),
-        preprocessing=PreprocessingType(settings.default_preprocessing),
-    )
+    with httpx.stream(
+        "POST",
+        STREAM_ENDPOINT,
+        json=payload,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT,
+    ) as response:
+        response.raise_for_status()
+        for event_type, data in _parse_sse_events(response):
+            if event_type == "done":
+                return
+            if event_type == "error":
+                raise RuntimeError(f"Backend devolvió error: {data}")
+            if event_type in ("delta", "message") and data:
+                yield data
 
 
-# === App ===
-
-settings = get_settings()
+# === App Streamlit ===
 
 st.set_page_config(
     page_title="Estimator CAG",
@@ -114,64 +102,37 @@ st.set_page_config(
 )
 
 st.title("🧮 Estimator CAG")
-st.caption(
-    f"Provider: **{settings.llm_provider}** · "
-    f"Model: **{settings.llm_model}** · "
-    f"Examples: **{settings.default_num_examples}**"
-)
+st.caption(f"Backend: `{BACKEND_URL}` · Endpoint: `/api/v1/estimate/stream`")
 
-# Inicializar el system prompt una vez por sesión (estabiliza la selección
-# aleatoria de ejemplos para esa conversación).
-if "system_prompt" not in st.session_state:
-    st.session_state.system_prompt = _build_initial_system_prompt(settings)
-
-# Inicializar el historial de la conversación.
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Renderizar el historial existente.
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Aceptar input del usuario.
 if prompt := st.chat_input("Pega aquí la transcripción de la reunión..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Streaming según el proveedor configurado en .env
         try:
-            if settings.llm_provider == "anthropic":
-                stream = _stream_anthropic(
-                    settings=settings,
-                    system=st.session_state.system_prompt,
-                    messages=st.session_state.messages,
-                    max_tokens=settings.llm_max_tokens,
-                    temperature=settings.llm_temperature,
-                )
-            elif settings.llm_provider == "openai":
-                stream = _stream_openai(
-                    settings=settings,
-                    system=st.session_state.system_prompt,
-                    messages=st.session_state.messages,
-                    max_tokens=settings.llm_max_tokens,
-                    temperature=settings.llm_temperature,
-                )
-            else:
-                st.error(
-                    f"LLM_PROVIDER desconocido: {settings.llm_provider!r}. "
-                    f"Valores soportados: 'anthropic' | 'openai'."
-                )
-                st.stop()
-
-            response = st.write_stream(stream)
+            response = st.write_stream(stream_estimation(prompt))
+        except httpx.HTTPStatusError as exc:
+            st.error(
+                f"El backend respondió con {exc.response.status_code}: "
+                f"{exc.response.text}"
+            )
+            st.stop()
+        except httpx.RequestError as exc:
+            st.error(
+                f"No se pudo conectar al backend en `{BACKEND_URL}`. "
+                f"¿Está levantado el contenedor? Detalle: {exc}"
+            )
+            st.stop()
         except RuntimeError as exc:
             st.error(str(exc))
-            st.stop()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Error llamando al LLM: {exc}")
             st.stop()
 
     st.session_state.messages.append({"role": "assistant", "content": response})
