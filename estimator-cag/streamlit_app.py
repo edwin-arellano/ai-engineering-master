@@ -1,99 +1,66 @@
-"""Cliente conversacional Streamlit para el servicio estimator-cag.
+"""Cliente Streamlit (formulario) para el servicio estimator-cag.
 
-Este archivo es deliberadamente un **cliente HTTP independiente** del backend:
-no importa nada de `app.*`. Consume el endpoint SSE `/api/v1/estimate/stream`
-del backend FastAPI vía httpx.
+A partir de pre-session-04, el cliente es un formulario con parámetros
+tipados que produce un POST /api/v1/estimate al backend. Ya no es un
+chat conversacional ni consume el endpoint SSE.
 
-Diseño explicado por Antonio en la sesión live de S3:
-- Si el frontend se rompe, el API sigue respondiendo a otros clientes.
-- Si el día de mañana cambia el frontend (a Next.js, Vue, lo que sea), el
-  contrato HTTP del backend no se toca.
+Sigue siendo cliente HTTP puro: no importa nada de `app.*`.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
 
 import httpx
 import streamlit as st
 from dotenv import load_dotenv
 
-# Cargar .env del proyecto (mismas variables que usa el backend)
 load_dotenv()
 
 
 # === Configuración ===
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
-STREAM_ENDPOINT = f"{BACKEND_URL}/api/v1/estimate/stream"
+ESTIMATE_ENDPOINT = f"{BACKEND_URL}/api/v1/estimate"
 REQUEST_TIMEOUT = float(os.environ.get("STREAMLIT_TIMEOUT", "180"))
 
 
-# === SSE parsing y consumo del backend ===
+# === Mapeos enum → label legible para el formulario ===
 
-def _parse_sse_events(response: httpx.Response) -> Iterator[tuple[str, str]]:
-    """Parsea el stream SSE en tuplas (event_type, data).
+PROJECT_TYPE_OPTIONS: dict[str, str] = {
+    "mobile_app": "Mobile app",
+    "web_saas": "Web SaaS",
+    "internal_tool": "Internal tool",
+    "data_pipeline": "Data pipeline",
+}
 
-    httpx no tiene parser SSE integrado. Implementamos el mínimo necesario:
-    - `event: <tipo>` define el tipo del próximo evento.
-    - `data: <contenido>` añade contenido al evento actual (puede haber varias
-      líneas data; se concatenan con '\\n').
-    - Línea vacía = fin del evento, se emite.
-    - Líneas que empiezan por `:` son comentarios/heartbeats, se ignoran.
-    """
-    current_event = "message"
-    data_lines: list[str] = []
+DETAIL_LEVEL_OPTIONS: dict[str, str] = {
+    "summary": "Summary",
+    "medium": "Medium",
+    "detailed": "Detailed",
+}
 
-    for line in response.iter_lines():
-        if line.startswith(":"):
-            continue
-        if not line:
-            if data_lines:
-                yield current_event, "\n".join(data_lines)
-                data_lines = []
-            current_event = "message"
-            continue
-        if line.startswith("event:"):
-            current_event = line[len("event:") :].lstrip()
-        elif line.startswith("data:"):
-            data_lines.append(line[len("data:") :].lstrip())
-
-    # Por si el stream termina sin línea vacía final
-    if data_lines:
-        yield current_event, "\n".join(data_lines)
+OUTPUT_FORMAT_OPTIONS: dict[str, str] = {
+    "phases_table": "Phases table",
+    "line_items": "Line items",
+    "narrative": "Narrative",
+}
 
 
-def stream_estimation(transcription: str) -> Iterator[str]:
-    """Consume el endpoint SSE y yield text chunks listos para `st.write_stream`.
+# === HTTP client ===
 
-    Los eventos `event: delta` aportan texto. `event: done` cierra el stream.
-    `event: error` levanta RuntimeError con el mensaje del backend.
-    """
-    payload = {"transcription": transcription}
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-    }
-
-    with httpx.stream(
-        "POST",
-        STREAM_ENDPOINT,
+def submit_estimation(payload: dict) -> dict:
+    """POST al backend y devuelve el JSON parseado."""
+    response = httpx.post(
+        ESTIMATE_ENDPOINT,
         json=payload,
-        headers=headers,
         timeout=REQUEST_TIMEOUT,
-    ) as response:
-        response.raise_for_status()
-        for event_type, data in _parse_sse_events(response):
-            if event_type == "done":
-                return
-            if event_type == "error":
-                raise RuntimeError(f"Backend devolvió error: {data}")
-            if event_type in ("delta", "message") and data:
-                yield data
+    )
+    response.raise_for_status()
+    return response.json()
 
 
-# === App Streamlit ===
+# === App ===
 
 st.set_page_config(
     page_title="Estimator CAG",
@@ -102,23 +69,60 @@ st.set_page_config(
 )
 
 st.title("🧮 Estimator CAG")
-st.caption(f"Backend: `{BACKEND_URL}` · Endpoint: `/api/v1/estimate/stream`")
+st.caption(f"Backend: `{BACKEND_URL}` · Endpoint: `/api/v1/estimate`")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+with st.form("estimation_form", clear_on_submit=False):
+    description = st.text_area(
+        "Project description",
+        height=180,
+        placeholder=(
+            "Describe the project you want to estimate. "
+            "Include the main features, target platforms, integrations, "
+            "and any constraints you know about (20-2000 chars)."
+        ),
+        max_chars=2000,
+    )
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    col1, col2 = st.columns(2)
+    with col1:
+        project_type = st.selectbox(
+            "Project type",
+            options=list(PROJECT_TYPE_OPTIONS.keys()),
+            format_func=lambda key: PROJECT_TYPE_OPTIONS[key],
+        )
+    with col2:
+        output_format = st.selectbox(
+            "Output format",
+            options=list(OUTPUT_FORMAT_OPTIONS.keys()),
+            format_func=lambda key: OUTPUT_FORMAT_OPTIONS[key],
+        )
 
-if prompt := st.chat_input("Pega aquí la transcripción de la reunión..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+    detail_level = st.radio(
+        "Detail level",
+        options=list(DETAIL_LEVEL_OPTIONS.keys()),
+        format_func=lambda key: DETAIL_LEVEL_OPTIONS[key],
+        horizontal=True,
+    )
 
-    with st.chat_message("assistant"):
+    submitted = st.form_submit_button("Generate estimation", type="primary")
+
+
+if submitted:
+    cleaned_description = description.strip()
+    if len(cleaned_description) < 20:
+        st.error("La descripción debe tener al menos 20 caracteres.")
+        st.stop()
+
+    payload = {
+        "description": cleaned_description,
+        "project_type": project_type,
+        "detail_level": detail_level,
+        "output_format": output_format,
+    }
+
+    with st.spinner("Generating estimation..."):
         try:
-            response = st.write_stream(stream_estimation(prompt))
+            result = submit_estimation(payload)
         except httpx.HTTPStatusError as exc:
             st.error(
                 f"El backend respondió con {exc.response.status_code}: "
@@ -131,8 +135,14 @@ if prompt := st.chat_input("Pega aquí la transcripción de la reunión..."):
                 f"¿Está levantado el contenedor? Detalle: {exc}"
             )
             st.stop()
-        except RuntimeError as exc:
-            st.error(str(exc))
-            st.stop()
 
-    st.session_state.messages.append({"role": "assistant", "content": response})
+    # Persistir la última estimación en session_state para que sobreviva a
+    # reruns parciales de Streamlit.
+    st.session_state.last_result = result
+
+
+if "last_result" in st.session_state:
+    result = st.session_state.last_result
+    st.markdown("### Estimation")
+    st.markdown(result["text"])
+    st.caption(f"Prompt version: `{result['prompt_version']}`")
