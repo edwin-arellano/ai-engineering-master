@@ -13,9 +13,10 @@ app = FastAPI(
     title="Estimator CAG",
     description=(
         "Servicio de estimación de software con arquitectura CAG. "
-        "Incluye wrapper LiteLLM, cache exact-match Redis y streaming SSE."
+        "Structured outputs con Instructor, cinco capas de guardrails y "
+        "cache de dos niveles (exact-match + semántico)."
     ),
-    version="0.3.0",
+    version="0.4.0",
 )
 
 # Middleware de request_id (debe ir antes de incluir routers)

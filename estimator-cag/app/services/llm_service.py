@@ -1,225 +1,153 @@
-"""Servicio LLM.
+"""Pipeline principal del servicio: orquesta guardrails, cache y LLM.
 
-Tras pre-session-04 el módulo expone dos rutas distintas:
+Orden estricto (cualquier reordenación tiene implicaciones de seguridad):
 
-- `generate_estimation(...)`: flujo nuevo del endpoint /api/v1/estimate.
-  Renderiza el prompt vía el loader Jinja2 (`render_estimation_prompt`)
-  y delega en `LLMWrapper.complete(...)`.
+    1. Input guardrails (capa 2). Si fallan → InputGuardrailError → 400.
+    2. Cache exact-match. Si hit → devolver con cache_level="exact_match".
+    3. Cache semántico. Si hit → poblar exact-match y devolver con cache_level="semantic".
+    4. Render del prompt v2 con Jinja2.
+    5. Llamada al LLM con `complete_structured` (capas 3 y 4: prompt robusto +
+       validators de Pydantic con retry automático).
+    6. Output guardrails (capa 5). Decide si entra a cache.
+    7. Si es cacheable, escribir tanto en exact-match como en semantic.
+    8. Devolver el resultado al cliente.
 
-- `build_legacy_system_prompt(...)` + constantes: flujo legacy de
-  session-02/03 que sigue usando el endpoint /api/v1/estimate/stream.
-  Eliminar cuando ese endpoint se migre o desaparezca.
+El campo `cached` y `cache_level` de `EstimationResponse` permiten al frontend
+mostrar el origen de la respuesta y a observabilidad medir la tasa real de
+hits por capa.
 """
 
 from __future__ import annotations
 
-import random
+from functools import lru_cache
 
 import structlog
 
-from app.config import get_settings
-from app.context.examples import ESTIMATION_EXAMPLES  # legacy, sigue alimentando el stream
+from app.config import Settings, get_settings
 from app.core.llm_wrapper import LLMWrapper
+from app.guardrails import (
+    should_cache_result,
+    validate_input,
+)
 from app.prompts.loader import render_estimation_prompt
-from app.schemas.estimation import EstimationRequest, EstimationResponse
-from app.schemas.legacy_estimation import (
-    LegacyExampleFormat,
-    LegacyOutputFormat,
-    LegacyPreprocessingType,
+from app.schemas.estimation import (
+    EstimationRequest,
+    EstimationResponse,
+    EstimationResult,
+)
+from app.services.cache import (
+    ExactMatchCache,
+    SemanticCacheService,
+    make_exact_match_key,
 )
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
-# === Wrapper singleton (compartido entre los dos flujos) ===
-
-_wrapper: LLMWrapper | None = None
-
-
-def get_wrapper() -> LLMWrapper:
-    """Devuelve el singleton del wrapper, instanciándolo en la primera llamada."""
-    global _wrapper
-    if _wrapper is None:
-        _wrapper = LLMWrapper()
-    return _wrapper
+# ---------------------------------------------------------------------------
+# Singletons
+# ---------------------------------------------------------------------------
 
 
-# === Flujo nuevo (pre-session-04): generate_estimation con loader Jinja2 ===
+@lru_cache(maxsize=1)
+def _get_wrapper(settings: Settings | None = None) -> LLMWrapper:
+    return LLMWrapper(settings or get_settings())
 
-async def generate_estimation(request: EstimationRequest) -> EstimationResponse:
-    """Genera una estimación a partir del nuevo schema tipado.
 
-    Flujo:
-    1. Renderiza system y user del template Jinja2 versionado (v1 por defecto).
-    2. Llama al wrapper (LiteLLM Router con fallback y cache).
-    3. Devuelve el texto del LLM con la versión del prompt.
+@lru_cache(maxsize=1)
+def _get_exact_cache(settings: Settings | None = None) -> ExactMatchCache:
+    s = settings or get_settings()
+    return ExactMatchCache(
+        redis_url=s.redis_url,
+        ttl_seconds=s.cache_ttl_seconds,
+        enabled=s.cache_enabled,
+    )
 
-    Todas las features de session-02 (preprocessing, evaluation,
-    thinking_budget, etc.) han desaparecido. Si en session-04 reaparecen,
-    será con un diseño nuevo basado en structured outputs y guardrails.
+
+@lru_cache(maxsize=1)
+def _get_semantic_cache(settings: Settings | None = None) -> SemanticCacheService:
+    return SemanticCacheService(settings or get_settings())
+
+
+# ---------------------------------------------------------------------------
+# API pública del servicio
+# ---------------------------------------------------------------------------
+
+
+def generate_estimation(request: EstimationRequest) -> EstimationResponse:
+    """Ejecuta el pipeline completo y devuelve la respuesta del endpoint.
+
+    Si los input guardrails fallan, propaga `InputGuardrailError`. El router
+    HTTP es el que lo traduce a `HTTPException 400` con detalle estructurado.
     """
-    wrapper = get_wrapper()
     settings = get_settings()
-    prompt_version = "v1"
+    prompt_version = settings.prompt_version
 
+    # Capa 2: input guardrails. Si dispara, no toca cache ni LLM.
+    validate_input(request.description, settings)
+
+    exact_cache = _get_exact_cache(settings)
+    semantic_cache = _get_semantic_cache(settings)
+
+    # Paso 2: exact-match (más barato que embedding).
+    exact_key = make_exact_match_key(request, prompt_version)
+    cached_exact = exact_cache.get(exact_key)
+    if cached_exact is not None:
+        logger.info("cache_hit", level="exact_match", key=exact_key)
+        return EstimationResponse(
+            result=cached_exact,
+            prompt_version=prompt_version,
+            cached=True,
+            cache_level="exact_match",
+        )
+
+    # Paso 3: cache semántico. Más caro (embedding ~50-100 ms), pero captura
+    # reformulaciones del mismo input.
+    cached_semantic = semantic_cache.lookup(request, prompt_version)
+    if cached_semantic is not None:
+        logger.info("cache_hit", level="semantic")
+        # Poblamos exact-match para que la próxima request idéntica sea gratis.
+        exact_cache.set(exact_key, cached_semantic)
+        return EstimationResponse(
+            result=cached_semantic,
+            prompt_version=prompt_version,
+            cached=True,
+            cache_level="semantic",
+        )
+
+    # Paso 4: render del prompt v2.
     system_prompt, user_message = render_estimation_prompt(
         request, version=prompt_version
     )
 
-    llm_result = wrapper.complete(
+    # Paso 5: llamada al LLM con structured outputs.
+    wrapper = _get_wrapper(settings)
+    result = wrapper.complete_structured(
         system_prompt=system_prompt,
         user_message=user_message,
+        response_model=EstimationResult,
         max_tokens=settings.llm_max_tokens,
         temperature=settings.llm_temperature,
+        max_retries=3,
     )
+
+    # Paso 6 + 7: output guardrails + cache write.
+    if should_cache_result(result, settings):
+        exact_cache.set(exact_key, result)
+        semantic_cache.store(request, prompt_version, result)
+    else:
+        logger.info(
+            "estimation_not_cached",
+            confidence_pct=result.confidence_pct,
+            out_of_scope=result.summary.startswith("Out of scope:"),
+        )
 
     return EstimationResponse(
-        text=llm_result["text"],
+        result=result,
         prompt_version=prompt_version,
+        cached=False,
+        cache_level=None,
     )
 
 
-# === Flujo legacy (session-02/03): build_legacy_system_prompt + constantes ===
-# Sigue usado por /api/v1/estimate/stream. NO eliminar hasta migrar el stream.
-
-_INLINE_CLEANING_BLOCK = """\
-=== INPUT PREPROCESSING INSTRUCTION ===
-
-The transcription you receive below may contain informal conversations,
-divagations, off-topic comments, interruptions, and noise typical of
-real meeting transcripts. Before producing your estimate:
-
-1. Mentally extract only the functional and technical requirements
-   relevant to the estimation.
-2. Ignore personal divagations, off-topic conversations, technical
-   asides, jokes, and interruptions.
-3. Consolidate scattered mentions of the same requirement into a
-   single coherent requirement.
-
-Do NOT include the cleaned requirements in your output — only the
-final estimate.
-"""
-
-
-_BASE_SYSTEM_PROMPT = """\
-You are a senior software estimation consultant with 15+ years of
-experience estimating custom development projects. Your job is to
-analyze a meeting transcription with a client and produce a
-structured, defensible estimation.
-
-Do not invent technologies or features that are not mentioned in
-the transcription. If the transcription is too vague or out of
-scope (not a software project), say so explicitly and do not
-invent numbers.
-"""
-
-
-_MARKDOWN_OUTPUT_INSTRUCTIONS = """\
-=== OUTPUT FORMAT ===
-
-Respond in Markdown with the following structure:
-
-## <Project title>
-
-### Desglose de tareas
-1. <Task name> (<N> h)
-2. <Task name> (<N> h)
-...
-
-**Total: <N> h**
-**Equipo recomendado: <team composition>**
-**Duración estimada: <N>-<M> semanas**
-
-The sum of hours in the breakdown MUST equal the declared total.
-"""
-
-
-_JSON_OUTPUT_INSTRUCTIONS = """\
-=== OUTPUT FORMAT ===
-
-Respond with a single valid JSON object (no Markdown code fences,
-no commentary before or after) with EXACTLY this structure:
-
-{
-  "title": "string — project title",
-  "breakdown": [
-    {"task": "string — task name", "hours": <integer>}
-  ],
-  "total_hours": <integer>,
-  "team": "string — recommended team composition",
-  "duration_weeks": "string — e.g. '6-8' or '10'"
-}
-
-Rules:
-- The 'breakdown' array MUST contain at least 3 tasks.
-- 'total_hours' MUST equal the sum of hours in 'breakdown'.
-- All integer fields are whole numbers (no decimals).
-"""
-
-
-def _format_legacy_examples(
-    num_examples: int,
-    example_format: LegacyExampleFormat,
-    deterministic: bool = False,
-) -> str:
-    """Formatea N ejemplos few-shot. Random por defecto, determinista si se pide.
-
-    `deterministic=True` selecciona los primeros N ejemplos en orden, necesario
-    para que el endpoint /estimate/stream produzca cache hits estables.
-    """
-    if example_format != LegacyExampleFormat.MARKDOWN:
-        raise NotImplementedError(
-            f"example_format={example_format!r} no soportado en el flujo legacy"
-        )
-
-    if num_examples <= 0:
-        return ""
-
-    total = len(ESTIMATION_EXAMPLES)
-    n = min(num_examples, total)
-
-    if deterministic:
-        selected = ESTIMATION_EXAMPLES[:n]
-    else:
-        selected = random.sample(ESTIMATION_EXAMPLES, n)
-
-    blocks: list[str] = []
-    for index, example in enumerate(selected, start=1):
-        blocks.append(
-            f"===== REFERENCE ESTIMATION {index} =====\n\n"
-            f"Meeting summary: {example['meeting_summary']}\n\n"
-            f"Estimation:\n{example['estimation']}"
-        )
-    blocks.append("===== END OF REFERENCE ESTIMATIONS =====")
-    return "\n\n".join(blocks)
-
-
-def build_legacy_system_prompt(
-    num_examples: int,
-    example_format: LegacyExampleFormat,
-    output_format: LegacyOutputFormat,
-    preprocessing: LegacyPreprocessingType,
-    deterministic: bool = False,
-) -> str:
-    """Compone el system prompt del flujo legacy (sin cambios funcionales).
-
-    Solo lo invoca el endpoint /api/v1/estimate/stream. El endpoint
-    /api/v1/estimate ya no pasa por aquí: usa el loader Jinja2.
-    """
-    parts: list[str] = []
-
-    if preprocessing == LegacyPreprocessingType.INLINE_CLEANING:
-        parts.append(_INLINE_CLEANING_BLOCK)
-
-    parts.append(_BASE_SYSTEM_PROMPT)
-
-    if output_format == LegacyOutputFormat.JSON:
-        parts.append(_JSON_OUTPUT_INSTRUCTIONS)
-    else:
-        parts.append(_MARKDOWN_OUTPUT_INSTRUCTIONS)
-
-    examples_block = _format_legacy_examples(num_examples, example_format, deterministic)
-    if examples_block:
-        parts.append(examples_block)
-
-    return "\n\n".join(parts)
+__all__ = ["generate_estimation"]
