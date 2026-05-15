@@ -20,9 +20,6 @@ RUN uv sync --frozen --no-dev --no-install-project
 # Copiar el código de la aplicación
 COPY app/ ./app/
 
-# Copiar fixtures (sólo para ejemplos curl dentro del contenedor; no es código)
-COPY fixtures/ ./fixtures/
-
 EXPOSE 8000
 
 CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
