@@ -100,12 +100,12 @@ def test_project_type_is_humanised_in_system():
     del system prompt. Otras menciones (en los ejemplos few-shot, etc.) sí
     usan el formato snake_case original.
     """
-    request = _make_request(project_type=ProjectType.DATA_PIPELINE)
+    request = _make_request(project_type=ProjectType.INTERNAL_TOOL)
 
     system, _ = render_estimation_prompt(request)
 
     # La línea humanizada existe
-    assert "experience in\ndata pipeline projects" in system or "experience in data pipeline projects" in system
+    assert "experience in\ninternal tool projects" in system or "experience in internal tool projects" in system
 
 
 def test_examples_block_is_included():
