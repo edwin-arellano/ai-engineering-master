@@ -1,8 +1,11 @@
 """Cache semántico basado en `redisvl.SemanticCache`.
 
 Estructura de claves:
-- Bucket determinista: "{prompt_version}:{project_type}:{detail_level}:{output_format}"
-  (filtra por similitud solo dentro del mismo "tipo de request").
+- Bucket determinista almacenado en `metadata.bucket` (p.ej.
+  "v2_mobile_app_detailed_phases_table"). Aísla en código Python qué hits
+  son válidos para el tipo de request actual; se evita usar `filter_expression`
+  de RediSearch porque su tokenizador trata `_`, `-` y `:` de formas
+  inconsistentes y dispara Syntax error o miss silencioso.
 - Vector: embedding de `request.description` con `OpenAITextVectorizer`.
 
 Política de fallo: si OpenAI no está configurado o redisvl no puede conectarse,
@@ -15,6 +18,8 @@ queda para sesiones 7-8 cuando entendamos embeddings y vector search a fondo.
 
 from __future__ import annotations
 
+import json
+
 import structlog
 
 from app.config import Settings
@@ -22,13 +27,17 @@ from app.schemas.estimation import EstimationRequest, EstimationResult
 
 logger = structlog.get_logger(__name__)
 
+# Recuperamos varios candidatos por similitud y filtramos por bucket en Python.
+# Subir este número aumenta la probabilidad de encontrar un hit del bucket
+# correcto cuando el cache tiene mezcla de project_type/detail_level/...
+SEMANTIC_LOOKUP_CANDIDATES = 5
+
 
 def make_bucket_key(request: EstimationRequest, prompt_version: str) -> str:
     """Bucket determinista que aísla la búsqueda semántica por tipo de request.
 
-    Usamos `_` como separador porque `:` y `-` son metacaracteres de RediSearch
-    dentro de tag queries y rompen el filtro `@bucket:{...}` con 'Syntax error'.
-    `_` es alfanumérico para el tokenizador, así que se trata como literal.
+    El bucket viaja en `metadata` y se compara en Python. El separador `_` es
+    arbitrario en este punto porque ya no se usa en queries RediSearch.
     """
     return "_".join(
         [
@@ -38,6 +47,30 @@ def make_bucket_key(request: EstimationRequest, prompt_version: str) -> str:
             request.output_format.value,
         ]
     )
+
+
+def _extract_bucket_from_metadata(hit: dict) -> str | None:
+    """Devuelve el bucket guardado en metadata, tolerando dict o JSON string.
+
+    redisvl serializa `metadata` como JSON string al guardar, así que en los
+    hits suele venir como string. Si en algún momento viene como dict, también
+    se soporta.
+    """
+    metadata = hit.get("metadata")
+    if metadata is None:
+        return None
+    if isinstance(metadata, dict):
+        value = metadata.get("bucket")
+        return value if isinstance(value, str) else None
+    if isinstance(metadata, str):
+        try:
+            parsed = json.loads(metadata)
+        except ValueError:
+            return None
+        if isinstance(parsed, dict):
+            value = parsed.get("bucket")
+            return value if isinstance(value, str) else None
+    return None
 
 
 class SemanticCacheService:
@@ -75,7 +108,6 @@ class SemanticCacheService:
                 vectorizer=vectorizer,
                 distance_threshold=self._distance_threshold,
                 ttl=settings.semantic_cache_ttl_seconds,
-                filterable_fields=[{"name": "bucket", "type": "tag"}],
             )
             self.enabled = True
             logger.info(
@@ -93,35 +125,58 @@ class SemanticCacheService:
     def lookup(
         self, request: EstimationRequest, prompt_version: str
     ) -> EstimationResult | None:
-        """Busca una respuesta cacheada semánticamente similar dentro del bucket."""
+        """Busca una respuesta cacheada semánticamente similar dentro del bucket.
+
+        Recupera los `SEMANTIC_LOOKUP_CANDIDATES` hits más cercanos por
+        similitud y devuelve el primero cuyo bucket coincida con el del
+        request. El filtrado se hace en Python para evitar las idiosincrasias
+        del tokenizer de RediSearch en queries tag con caracteres no
+        alfanuméricos.
+        """
         if not self.enabled or self._cache is None:
             return None
 
-        bucket = make_bucket_key(request, prompt_version)
+        expected_bucket = make_bucket_key(request, prompt_version)
         try:
             hits = self._cache.check(
                 prompt=request.description,
-                filter_expression=f"@bucket:{{{bucket}}}",
-                num_results=1,
+                num_results=SEMANTIC_LOOKUP_CANDIDATES,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("semantic_cache_lookup_failed", error=str(exc), bucket=bucket)
+            logger.warning(
+                "semantic_cache_lookup_failed",
+                error=str(exc),
+                bucket=expected_bucket,
+            )
             return None
 
         if not hits:
             return None
 
-        payload = hits[0].get("response")
-        if not payload:
-            return None
+        for hit in hits:
+            bucket = _extract_bucket_from_metadata(hit)
+            if bucket != expected_bucket:
+                continue
+            payload = hit.get("response")
+            if not payload:
+                continue
+            try:
+                return EstimationResult.model_validate_json(payload)
+            except ValueError as exc:
+                logger.warning(
+                    "semantic_cache_payload_invalid",
+                    error=str(exc),
+                    bucket=expected_bucket,
+                )
+                return None
 
-        try:
-            return EstimationResult.model_validate_json(payload)
-        except ValueError as exc:
-            logger.warning(
-                "semantic_cache_payload_invalid", error=str(exc), bucket=bucket
-            )
-            return None
+        # Había candidatos por similitud pero ninguno del bucket correcto.
+        logger.info(
+            "semantic_cache_bucket_mismatch",
+            expected_bucket=expected_bucket,
+            candidate_count=len(hits),
+        )
+        return None
 
     def store(
         self,
