@@ -23,7 +23,7 @@ from functools import lru_cache
 
 import structlog
 
-from app.config import Settings, get_settings
+from app.config import get_settings
 from app.core.llm_wrapper import LLMWrapper
 from app.guardrails import (
     should_cache_result,
@@ -49,14 +49,19 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-@lru_cache(maxsize=1)
-def _get_wrapper(settings: Settings | None = None) -> LLMWrapper:
-    return LLMWrapper(settings or get_settings())
+# Settings es un BaseSettings de Pydantic — no es hasheable, así que NO puede
+# ir como argumento de funciones cacheadas con lru_cache. Las tres funciones
+# leen el singleton vía get_settings() (ya cacheado) y no exponen parámetros.
 
 
 @lru_cache(maxsize=1)
-def _get_exact_cache(settings: Settings | None = None) -> ExactMatchCache:
-    s = settings or get_settings()
+def _get_wrapper() -> LLMWrapper:
+    return LLMWrapper(get_settings())
+
+
+@lru_cache(maxsize=1)
+def _get_exact_cache() -> ExactMatchCache:
+    s = get_settings()
     return ExactMatchCache(
         redis_url=s.redis_url,
         ttl_seconds=s.cache_ttl_seconds,
@@ -65,8 +70,8 @@ def _get_exact_cache(settings: Settings | None = None) -> ExactMatchCache:
 
 
 @lru_cache(maxsize=1)
-def _get_semantic_cache(settings: Settings | None = None) -> SemanticCacheService:
-    return SemanticCacheService(settings or get_settings())
+def _get_semantic_cache() -> SemanticCacheService:
+    return SemanticCacheService(get_settings())
 
 
 # ---------------------------------------------------------------------------
@@ -86,8 +91,8 @@ def generate_estimation(request: EstimationRequest) -> EstimationResponse:
     # Capa 2: input guardrails. Si dispara, no toca cache ni LLM.
     validate_input(request.description, settings)
 
-    exact_cache = _get_exact_cache(settings)
-    semantic_cache = _get_semantic_cache(settings)
+    exact_cache = _get_exact_cache()
+    semantic_cache = _get_semantic_cache()
 
     # Paso 2: exact-match (más barato que embedding).
     exact_key = make_exact_match_key(request, prompt_version)
@@ -121,7 +126,7 @@ def generate_estimation(request: EstimationRequest) -> EstimationResponse:
     )
 
     # Paso 5: llamada al LLM con structured outputs.
-    wrapper = _get_wrapper(settings)
+    wrapper = _get_wrapper()
     result = wrapper.complete_structured(
         system_prompt=system_prompt,
         user_message=user_message,
