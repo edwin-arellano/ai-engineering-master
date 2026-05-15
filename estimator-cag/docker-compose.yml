@@ -13,7 +13,6 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./app:/app/app:ro
-      - ./fixtures:/app/fixtures:ro
     depends_on:
       redis:
         condition: service_healthy
@@ -25,10 +24,13 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    # redis-stack incluye el módulo RediSearch que necesita redisvl.SemanticCache.
+    # Con redis:7-alpine el cache semántico se queda deshabilitado en arranque.
+    image: redis/redis-stack:latest
     container_name: estimator-redis
     ports:
       - "6379:6379"
+      - "8001:8001"  # RedisInsight (UI opcional para inspeccionar el cache)
     volumes:
       - redis-data:/data
     healthcheck:
