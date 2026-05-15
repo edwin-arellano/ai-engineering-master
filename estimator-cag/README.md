@@ -56,9 +56,12 @@ El servicio queda disponible en:
 - Swagger UI: http://localhost:8000/docs
 - Health: http://localhost:8000/health
 
-`docker-compose.yml` monta `./app` y `./fixtures` como volúmenes
-read-only y arranca `uvicorn --reload`, así que cualquier cambio en el
-código se recarga sin reconstruir la imagen.
+`docker-compose.yml` monta `./app` como volumen read-only y arranca
+`uvicorn --reload`, así que cualquier cambio en el código se recarga
+sin reconstruir la imagen. Desde S04 la imagen de Redis es
+`redis/redis-stack` (no `redis:7-alpine`) porque `redisvl.SemanticCache`
+requiere el módulo **RediSearch**. RedisInsight queda expuesto en
+`http://localhost:8001` para inspeccionar el índice y las keys.
 
 Para parar:
 
@@ -113,10 +116,16 @@ uv run streamlit run streamlit_app.py
 
 | Campo | Widget | Mapeo |
 |---|---|---|
-| Project description | `st.text_area` (20–2000 chars) | `description` |
-| Project type | `st.selectbox` | `mobile_app` / `web_saas` / `internal_tool` / `data_pipeline` |
-| Output format | `st.selectbox` | `phases_table` / `line_items` / `narrative` |
-| Detail level | `st.radio` horizontal | `summary` / `medium` / `detailed` |
+| Project description | `st.text_area` (10–4000 chars) | `description` |
+| Project type | `st.selectbox` | `mobile_app` / `web_saas` / `internal_tool` / `integration` / `other` |
+| Detail level | `st.selectbox` | `summary` / `medium` / `detailed` |
+| Output format | `st.radio` horizontal | `phases_table` / `line_items` / `narrative` |
+
+> Desde S04 el resultado se renderiza estructurado: `st.metric` × 3
+> (duration / cost / confidence), `st.progress` con la confianza global,
+> `st.dataframe` con la tabla de fases y sus assumptions, badge
+> `📦 From cache (...)` cuando aplica y `st.warning` cuando el modelo
+> marca la petición como `Out of scope:`.
 
 Al enviar el formulario se hace `POST /api/v1/estimate`. La última
 estimación se persiste en `st.session_state.last_result` para que
