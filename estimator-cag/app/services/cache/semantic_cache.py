@@ -24,8 +24,12 @@ logger = structlog.get_logger(__name__)
 
 
 def make_bucket_key(request: EstimationRequest, prompt_version: str) -> str:
-    """Bucket determinista que aísla la búsqueda semántica por tipo de request."""
-    return ":".join(
+    """Bucket determinista que aísla la búsqueda semántica por tipo de request.
+
+    Usamos `-` como separador (no `:`) porque `:` es metacarácter de RediSearch
+    en tag queries y rompería el filtro `@bucket:{...}` al combinar con el valor.
+    """
+    return "-".join(
         [
             prompt_version,
             request.project_type.value,

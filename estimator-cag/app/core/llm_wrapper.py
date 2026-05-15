@@ -125,7 +125,9 @@ class LLMWrapper:
             max_retries=max_retries,
         )
         try:
-            result = self._structured_client(
+            # Instructor 1.x expone una API tipo chat.completions.create(...)
+            # — no es invocable directamente como en versiones antiguas.
+            result = self._structured_client.chat.completions.create(
                 model=ROUTER_ALIAS,
                 messages=[
                     {"role": "system", "content": system_prompt},
