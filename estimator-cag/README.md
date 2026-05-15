@@ -408,3 +408,114 @@ Wrapper (app/core/llm_wrapper.py) — sin cambios desde session-03:
 - **Decisión sobre `/estimate/stream`** y `legacy_estimation.py`:
   migrar, reemplazar o eliminar.
 - **Posible extracción del Streamlit** a otro proyecto separado.
+
+---
+
+## Sesión 04
+
+La rama `session-04` añade structured outputs con Instructor, cinco
+capas de guardrails y cache semántico con `redisvl`, eliminando todo
+el código legacy de streaming y evaluación.
+
+### Cambios destructivos respecto a `pre-session-04`
+
+- **El endpoint `POST /api/v1/estimate/stream` ya no existe.** El
+  servicio sirve una única ruta: `POST /api/v1/estimate` con respuesta
+  síncrona y estructurada.
+- **El wrapper LiteLLM expone un único método público**
+  `complete_structured(...)`. `complete()` y `complete_stream()` se
+  han eliminado.
+- **`app/schemas/legacy_estimation.py`, `app/services/evaluation_service.py`
+  y `app/context/`** se han borrado del repo.
+- **La dependencia `sse-starlette`** se ha retirado.
+- **`app/core/cache.py`** se ha movido (con `git mv`) a
+  `app/services/cache/exact_match_cache.py` y convive ahora con
+  `app/services/cache/semantic_cache.py`.
+- **El enum `ProjectType`** sustituye `data_pipeline` por
+  `integration` y añade `other`.
+
+### Variables de entorno nuevas
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `EMBEDDINGS_MODEL` | `text-embedding-3-small` | Modelo de embeddings de OpenAI usado por el cache semántico |
+| `EMBEDDINGS_DIMENSIONS` | `1536` | Dimensiones del vector |
+| `SEMANTIC_CACHE_ENABLED` | `true` | Activa el cache semántico |
+| `SEMANTIC_CACHE_THRESHOLD` | `0.92` | Umbral de similitud para hit (0-1) |
+| `SEMANTIC_CACHE_TTL_SECONDS` | `86400` | TTL del cache semántico |
+| `SEMANTIC_CACHE_NAME` | `estimator_semantic_cache` | Nombre del índice en Redis |
+| `MODERATION_ENABLED` | `true` | Activa OpenAI Moderation API en input |
+| `MIN_CONFIDENCE_PCT` | `30` | Umbral mínimo de confianza para cachear |
+| `PROMPT_VERSION` | `v2` | Versión del template que se renderiza por defecto |
+
+### Las cinco capas de guardrails
+
+1. **Pydantic sintáctico del input** — `EstimationRequest` valida
+   tipos, rangos y longitudes. Política: exception (Pydantic).
+2. **Validación semántica del input** — `app/guardrails/input_guardrails.py`
+   aplica regex de prompt injection, detección de PII (email, IBAN,
+   teléfono) y OpenAI Moderation API en cascada. Política: exception
+   (`InputGuardrailError` → HTTP 400).
+3. **System prompt robusto** — `app/prompts/estimation/v2/system.j2`
+   incluye `<scope>` y `<numerical_constraints>` que instruyen al
+   modelo a devolver `"Out of scope:"` con totales a cero cuando la
+   descripción no encaja. Política: filter (comportamiento del modelo).
+4. **Validators de `EstimationResult`** — `total_must_match_sum_of_phases`
+   (±1 semana, ±5% coste) y `low_confidence_must_be_explicit`.
+   Política: fix con retry (Instructor reintenta hasta 3 veces).
+5. **Filtro de salida** — `app/guardrails/output_guardrails.should_cache_result`
+   evita persistir respuestas out-of-scope o de baja confianza.
+   Política: filter (no cachea pero sí devuelve al cliente).
+
+### Pipeline del endpoint
+
+```
+POST /api/v1/estimate
+ │
+ ├─ Input guardrails (regex + PII + Moderation)
+ │   └─ falla → 400 con {error, category, reason}
+ │
+ ├─ Exact-match cache (Redis, key = SHA256(request + prompt_version))
+ │   └─ hit → cached=true, cache_level="exact_match"
+ │
+ ├─ Semantic cache (redisvl, bucket = v2:project_type:detail_level:output_format)
+ │   └─ hit → popular exact-match, cached=true, cache_level="semantic"
+ │
+ ├─ Render prompt v2 (Jinja2)
+ │
+ ├─ Instructor + LiteLLM Router (Anthropic primary, OpenAI fallback)
+ │   └─ Pydantic validators fallan → Instructor retry (hasta 3 veces)
+ │
+ ├─ Output guardrails (out-of-scope o low confidence → no cachear)
+ │
+ └─ Respuesta: {result, prompt_version, cached, cache_level}
+```
+
+### Reorganización del árbol
+
+```
+app/
+├── core/
+│   ├── llm_wrapper.py        ← solo complete_structured
+│   └── logging_config.py
+├── guardrails/               ← nuevo
+│   ├── input_guardrails.py
+│   └── output_guardrails.py
+├── prompts/
+│   └── estimation/
+│       ├── v1/               ← intacto (referencia)
+│       └── v2/               ← nuevo (scope + numerical_constraints + ejemplos JSON)
+├── routers/
+│   └── estimations.py        ← un único endpoint
+├── schemas/
+│   └── estimation.py         ← Phase + EstimationResult + EstimationResponse rico
+└── services/
+    ├── cache/                ← nuevo paquete
+    │   ├── exact_match_cache.py   ← movido desde app/core/cache.py
+    │   └── semantic_cache.py
+    └── llm_service.py        ← pipeline completo
+```
+
+> Los scripts curl en `examples/` corresponden al endpoint stream
+> legacy y a respuestas en texto libre. Se mantienen sin mantenimiento
+> como referencia histórica y **no se actualizan** para session-04.

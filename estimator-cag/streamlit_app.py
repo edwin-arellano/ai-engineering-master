@@ -1,15 +1,18 @@
-"""Cliente Streamlit (formulario) para el servicio estimator-cag.
+"""Cliente Streamlit para el servicio de estimaciones.
 
-A partir de pre-session-04, el cliente es un formulario con parámetros
-tipados que produce un POST /api/v1/estimate al backend. Ya no es un
-chat conversacional ni consume el endpoint SSE.
-
-Sigue siendo cliente HTTP puro: no importa nada de `app.*`.
+Cliente HTTP puro: no importa de `app.*`. Llama al backend FastAPI vía httpx y
+renderiza el `EstimationResponse` estructurado:
+- `result.summary` con `st.markdown` (o `st.warning` si es out-of-scope).
+- `result.phases` con `st.dataframe`.
+- Métricas con `st.metric` en tres columnas.
+- `st.progress` para la confianza global.
+- Caption con `prompt_version` y badge si la respuesta vino de cache.
 """
 
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import httpx
 import streamlit as st
@@ -17,132 +20,187 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
-# === Configuración ===
-
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
-ESTIMATE_ENDPOINT = f"{BACKEND_URL}/api/v1/estimate"
-REQUEST_TIMEOUT = float(os.environ.get("STREAMLIT_TIMEOUT", "180"))
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+ENDPOINT = f"{BACKEND_URL.rstrip('/')}/api/v1/estimate"
+REQUEST_TIMEOUT = float(os.getenv("STREAMLIT_REQUEST_TIMEOUT", "120"))
 
 
-# === Mapeos enum → label legible para el formulario ===
-
-PROJECT_TYPE_OPTIONS: dict[str, str] = {
-    "mobile_app": "Mobile app",
-    "web_saas": "Web SaaS",
-    "internal_tool": "Internal tool",
-    "data_pipeline": "Data pipeline",
-}
-
-DETAIL_LEVEL_OPTIONS: dict[str, str] = {
-    "summary": "Summary",
-    "medium": "Medium",
-    "detailed": "Detailed",
-}
-
-OUTPUT_FORMAT_OPTIONS: dict[str, str] = {
-    "phases_table": "Phases table",
-    "line_items": "Line items",
-    "narrative": "Narrative",
-}
+# ---------------------------------------------------------------------------
+# Formulario
+# ---------------------------------------------------------------------------
 
 
-# === HTTP client ===
-
-def submit_estimation(payload: dict) -> dict:
-    """POST al backend y devuelve el JSON parseado."""
-    response = httpx.post(
-        ESTIMATE_ENDPOINT,
-        json=payload,
-        timeout=REQUEST_TIMEOUT,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-# === App ===
-
-st.set_page_config(
-    page_title="Estimator CAG",
-    page_icon="🧮",
-    layout="centered",
-)
-
-st.title("🧮 Estimator CAG")
-st.caption(f"Backend: `{BACKEND_URL}` · Endpoint: `/api/v1/estimate`")
-
-with st.form("estimation_form", clear_on_submit=False):
-    description = st.text_area(
-        "Project description",
-        height=180,
-        placeholder=(
-            "Describe the project you want to estimate. "
-            "Include the main features, target platforms, integrations, "
-            "and any constraints you know about (20-2000 chars)."
-        ),
-        max_chars=2000,
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        project_type = st.selectbox(
-            "Project type",
-            options=list(PROJECT_TYPE_OPTIONS.keys()),
-            format_func=lambda key: PROJECT_TYPE_OPTIONS[key],
+def _render_form() -> dict[str, Any] | None:
+    """Pinta el formulario y devuelve el payload si el usuario lo envía."""
+    with st.form("estimation_form", clear_on_submit=False):
+        description = st.text_area(
+            "Project description",
+            height=180,
+            placeholder="Describe the project to estimate...",
         )
-    with col2:
-        output_format = st.selectbox(
+        col_left, col_right = st.columns(2)
+        with col_left:
+            project_type = st.selectbox(
+                "Project type",
+                options=[
+                    "mobile_app",
+                    "web_saas",
+                    "internal_tool",
+                    "integration",
+                    "other",
+                ],
+                index=4,
+            )
+        with col_right:
+            detail_level = st.selectbox(
+                "Detail level",
+                options=["summary", "medium", "detailed"],
+                index=1,
+            )
+        output_format = st.radio(
             "Output format",
-            options=list(OUTPUT_FORMAT_OPTIONS.keys()),
-            format_func=lambda key: OUTPUT_FORMAT_OPTIONS[key],
+            options=["phases_table", "line_items", "narrative"],
+            index=0,
+            horizontal=True,
         )
+        submitted = st.form_submit_button("Generate estimation")
+        if not submitted:
+            return None
+        if not description or len(description.strip()) < 10:
+            st.warning("La descripción debe tener al menos 10 caracteres.")
+            return None
+        return {
+            "description": description.strip(),
+            "project_type": project_type,
+            "detail_level": detail_level,
+            "output_format": output_format,
+        }
 
-    detail_level = st.radio(
-        "Detail level",
-        options=list(DETAIL_LEVEL_OPTIONS.keys()),
-        format_func=lambda key: DETAIL_LEVEL_OPTIONS[key],
-        horizontal=True,
-    )
 
-    submitted = st.form_submit_button("Generate estimation", type="primary")
+# ---------------------------------------------------------------------------
+# Llamada al backend
+# ---------------------------------------------------------------------------
 
 
-if submitted:
-    cleaned_description = description.strip()
-    if len(cleaned_description) < 20:
-        st.error("La descripción debe tener al menos 20 caracteres.")
-        st.stop()
-
-    payload = {
-        "description": cleaned_description,
-        "project_type": project_type,
-        "detail_level": detail_level,
-        "output_format": output_format,
-    }
-
-    with st.spinner("Generating estimation..."):
+def _call_backend(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Llama al endpoint y devuelve el JSON crudo, manejando errores comunes."""
+    try:
+        with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+            response = client.post(ENDPOINT, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except httpx.HTTPStatusError as exc:
         try:
-            result = submit_estimation(payload)
-        except httpx.HTTPStatusError as exc:
+            detail = exc.response.json().get("detail", {})
+        except ValueError:
+            detail = {}
+        if exc.response.status_code == 400 and isinstance(detail, dict) and detail.get(
+            "error"
+        ) == "input_guardrail":
+            st.error(
+                f"La descripción fue rechazada por el guardrail de entrada "
+                f"(`{detail.get('category')}`): {detail.get('reason')}"
+            )
+        else:
             st.error(
                 f"El backend respondió con {exc.response.status_code}: "
                 f"{exc.response.text}"
             )
-            st.stop()
-        except httpx.RequestError as exc:
-            st.error(
-                f"No se pudo conectar al backend en `{BACKEND_URL}`. "
-                f"¿Está levantado el contenedor? Detalle: {exc}"
+        return None
+    except httpx.RequestError as exc:
+        st.error(f"No se pudo contactar con el backend ({BACKEND_URL}): {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Renderizado
+# ---------------------------------------------------------------------------
+
+
+def _render_estimation(response: dict[str, Any]) -> None:
+    """Renderiza un `EstimationResponse` estructurado."""
+    result = response.get("result", {})
+    prompt_version = response.get("prompt_version", "unknown")
+    cached = response.get("cached", False)
+    cache_level = response.get("cache_level")
+
+    summary = result.get("summary", "")
+    is_out_of_scope = summary.startswith("Out of scope:")
+
+    if is_out_of_scope:
+        st.warning(summary)
+        st.caption(
+            "El modelo marcó la petición como fuera del alcance del estimador. "
+            "No se generaron fases."
+        )
+    else:
+        st.markdown("### 📝 Summary")
+        st.markdown(summary)
+
+        col_a, col_b, col_c = st.columns(3)
+        col_a.metric(
+            "Duration",
+            f"{result.get('total_duration_weeks', 0)} weeks",
+        )
+        col_b.metric(
+            "Cost",
+            f"{result.get('total_cost_eur', 0):,} EUR",
+        )
+        col_c.metric(
+            "Confidence",
+            f"{result.get('confidence_pct', 0)} %",
+        )
+        st.progress(min(max(result.get("confidence_pct", 0) / 100, 0.0), 1.0))
+
+        phases = result.get("phases", [])
+        if phases:
+            st.markdown("### 📊 Breakdown by phase")
+            st.dataframe(
+                [
+                    {
+                        "Phase": phase.get("name", ""),
+                        "Weeks": phase.get("duration_weeks", 0),
+                        "Cost (EUR)": phase.get("cost_eur", 0),
+                        "Confidence (%)": phase.get("confidence_pct", 0),
+                        "Assumptions": " · ".join(phase.get("assumptions", [])),
+                    }
+                    for phase in phases
+                ],
+                use_container_width=True,
+                hide_index=True,
             )
-            st.stop()
 
-    # Persistir la última estimación en session_state para que sobreviva a
-    # reruns parciales de Streamlit.
-    st.session_state.last_result = result
+    caption_parts = [f"Prompt version: `{prompt_version}`"]
+    if cached:
+        caption_parts.append(f"📦 From cache ({cache_level})")
+    st.caption(" · ".join(caption_parts))
 
 
-if "last_result" in st.session_state:
-    result = st.session_state.last_result
-    st.markdown("### Estimation")
-    st.markdown(result["text"])
-    st.caption(f"Prompt version: `{result['prompt_version']}`")
+# ---------------------------------------------------------------------------
+# Página
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    st.set_page_config(page_title="Estimator", page_icon="📐", layout="centered")
+    st.title("📐 Software project estimator")
+    st.write(
+        "Describe a software project and the backend will return a structured "
+        "estimation with phases, totals and confidence."
+    )
+
+    payload = _render_form()
+    if payload is not None:
+        with st.spinner("Generating estimation..."):
+            response = _call_backend(payload)
+        if response is not None:
+            st.session_state.last_response = response
+
+    last_response = st.session_state.get("last_response")
+    if last_response is not None:
+        st.divider()
+        _render_estimation(last_response)
+
+
+if __name__ == "__main__":
+    main()
