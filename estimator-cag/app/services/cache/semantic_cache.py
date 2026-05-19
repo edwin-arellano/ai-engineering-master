@@ -23,7 +23,8 @@ import json
 import structlog
 
 from app.config import Settings
-from app.schemas.estimation import EstimationRequest, EstimationResult
+from app.schemas.estimation import EstimationResult
+from app.schemas.estimation_compat import CachedRequest
 
 logger = structlog.get_logger(__name__)
 
@@ -33,7 +34,7 @@ logger = structlog.get_logger(__name__)
 SEMANTIC_LOOKUP_CANDIDATES = 5
 
 
-def make_bucket_key(request: EstimationRequest, prompt_version: str) -> str:
+def make_bucket_key(request: CachedRequest, prompt_version: str) -> str:
     """Bucket determinista que aísla la búsqueda semántica por tipo de request.
 
     El bucket viaja en `metadata` y se compara en Python. El separador `_` es
@@ -123,7 +124,7 @@ class SemanticCacheService:
             self._cache = None
 
     def lookup(
-        self, request: EstimationRequest, prompt_version: str
+        self, request: CachedRequest, prompt_version: str
     ) -> EstimationResult | None:
         """Busca una respuesta cacheada semánticamente similar dentro del bucket.
 
@@ -180,7 +181,7 @@ class SemanticCacheService:
 
     def store(
         self,
-        request: EstimationRequest,
+        request: CachedRequest,
         prompt_version: str,
         result: EstimationResult,
     ) -> None:

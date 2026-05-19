@@ -154,3 +154,54 @@ class LLMWrapper:
             latency_ms=round(latency_ms, 2),
         )
         return result
+
+    def complete_structured_with_messages(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        response_model: type[T],
+        max_tokens: int = 4000,
+        temperature: float = 0.3,
+        max_retries: int = 3,
+    ) -> T:
+        """Variante de ``complete_structured`` que recibe el array ``messages`` ya armado.
+
+        Útil para flujos conversacionales donde el historial vive entre el
+        system y el último user. La lógica del LLM es la misma; solo cambia el
+        shape del input para no obligar al caller a pasarlo como un par
+        ``(system_prompt, user_message)``.
+        """
+        started_at = time.perf_counter()
+        logger.info(
+            "llm_call_started",
+            response_model=response_model.__name__,
+            messages_count=len(messages),
+            max_tokens=max_tokens,
+            temperature=temperature,
+            max_retries=max_retries,
+        )
+        try:
+            result = self._structured_client.chat.completions.create(
+                model=ROUTER_ALIAS,
+                messages=messages,
+                response_model=response_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                max_retries=max_retries,
+            )
+        except Exception as exc:
+            latency_ms = (time.perf_counter() - started_at) * 1000
+            logger.error(
+                "llm_call_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                latency_ms=round(latency_ms, 2),
+            )
+            raise
+        latency_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "llm_call_completed",
+            response_model=response_model.__name__,
+            latency_ms=round(latency_ms, 2),
+        )
+        return result

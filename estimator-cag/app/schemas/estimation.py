@@ -1,18 +1,20 @@
 """Schemas Pydantic v2 del dominio de estimación.
 
 Contiene:
-- Enums de la sesión pre-04 (ProjectType, DetailLevel, OutputFormat).
-- EstimationRequest (input del usuario).
-- Phase y EstimationResult: nuevos en S04, representan la salida tipada del LLM.
-- EstimationResponse: envuelve el resultado más metadata de cache y versión de prompt.
+- Enums (ProjectType, DetailLevel, OutputFormat) que sobreviven al refactor de
+  pre-S05 porque siguen describiendo el input del formulario.
+- Phase y EstimationResult: salida estructurada del LLM, con los dos
+  ``model_validator`` que actúan como guardrail semántico ligero.
+- EstimationResponse: envuelve el resultado más metadata de prompt/cache.
 
-Los `model_validator` de `EstimationResult` actúan como guardrail semántico ligero:
-- `total_must_match_sum_of_phases`: rechaza estimaciones incoherentes.
-- `low_confidence_must_be_explicit`: obliga al modelo a marcar las respuestas
-  de baja confianza como out-of-scope explícitamente.
+Pre-S05: ``EstimationRequest`` se elimina porque el endpoint single-shot
+desaparece. Los enums se siguen usando como campos ``Form()`` en el endpoint
+multipart de sesiones. El shim para el código del cache (que aún tipa con un
+request-like) vive en ``app/schemas/estimation_compat.py``.
 
-Cuando Instructor recibe un fallo de estos validators, reintenta automáticamente
-mostrando el error al modelo (política de fallo "fix con retry").
+Cuando Instructor recibe un fallo de los validators de ``EstimationResult``,
+reintenta automáticamente mostrando el error al modelo (política
+"fix con retry").
 """
 
 from __future__ import annotations
@@ -51,25 +53,6 @@ class OutputFormat(StrEnum):
     PHASES_TABLE = "phases_table"
     LINE_ITEMS = "line_items"
     NARRATIVE = "narrative"
-
-
-# ---------------------------------------------------------------------------
-# Input
-# ---------------------------------------------------------------------------
-
-
-class EstimationRequest(BaseModel):
-    """Petición de estimación tal como llega del formulario."""
-
-    description: str = Field(
-        ...,
-        min_length=10,
-        max_length=4000,
-        description="Descripción libre del proyecto a estimar.",
-    )
-    project_type: ProjectType = Field(default=ProjectType.OTHER)
-    detail_level: DetailLevel = Field(default=DetailLevel.MEDIUM)
-    output_format: OutputFormat = Field(default=OutputFormat.PHASES_TABLE)
 
 
 # ---------------------------------------------------------------------------
@@ -161,11 +144,12 @@ class EstimationResult(BaseModel):
 
 
 class EstimationResponse(BaseModel):
-    """Lo que el endpoint `POST /api/v1/estimate` devuelve al cliente.
+    """Envoltorio devuelto por el endpoint de sesiones tras una estimación.
 
-    `cached` y `cache_level` permiten al frontend mostrar si la respuesta vino
-    de cache y de qué capa (exact-match o semántico), útil para observabilidad
-    y para que el usuario interprete la latencia que está viendo.
+    ``cached`` y ``cache_level`` quedan inertes en pre-S05 (siempre ``False`` y
+    ``None``) porque el flujo conversacional no invoca el cache. Se conservan
+    en el shape para no romper consumidores ni cerrar la puerta a reactivar el
+    cache en sesiones futuras.
     """
 
     result: EstimationResult

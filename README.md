@@ -26,6 +26,7 @@ sesión en vivo) y `session-NN` (estado tras la sesión en vivo).
 | `session-03` | Wrapper LiteLLM con fallback, cache Redis, endpoint SSE `/api/v1/estimate/stream`, observabilidad `structlog`, Streamlit desacoplado a cliente HTTP puro |
 | `pre-session-04` | Endpoint `/api/v1/estimate` con formulario tipado (description + 3 enums), prompts Jinja2 versionados bajo `app/prompts/estimation/v1/`, Streamlit con `st.form` en lugar de chat |
 | `session-04` | Structured outputs con Instructor sobre LiteLLM Router, cinco capas de guardrails (regex + PII + Moderation + Pydantic validators + filtro de salida), cache semántico con `redisvl.SemanticCache`, template `v2` con `<scope>` y `<numerical_constraints>`, Streamlit que renderiza `EstimationResult`. Elimina endpoint stream y todo el código legacy. |
+| `pre-session-05` | Servicio conversacional con sesiones: `POST /api/v1/sessions` + `POST /api/v1/sessions/{id}/estimate` (multipart). Memoria persistente entre turnos (`ProjectMetadata` separada del historial), ventana deslizante de mensajes, adjuntos PDF/.docx con extracción local (`pypdf` + `python-docx`), template `v3` con bloques condicionales y LLM extractor de metadata. Elimina el endpoint single-shot; el cache de S04 queda dormido. |
 
 ## Cómo arrancar
 

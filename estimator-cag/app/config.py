@@ -55,8 +55,25 @@ class Settings(BaseSettings):
     moderation_enabled: bool = Field(default=True, alias="MODERATION_ENABLED")
     min_confidence_pct: int = Field(default=30, alias="MIN_CONFIDENCE_PCT")
 
-    # === Versionado de prompts (S04) ===
-    prompt_version: str = Field(default="v2", alias="PROMPT_VERSION")
+    # === Versionado de prompts (S04 → v2; pre-S05 → v3) ===
+    prompt_version: str = Field(default="v3", alias="PROMPT_VERSION")
+
+    # === Sesiones conversacionales (pre-S05) ===
+    max_turns: int = Field(
+        default=6,
+        alias="MAX_TURNS",
+        description="Pares user+assistant máximos que sobreviven a la ventana deslizante.",
+    )
+    session_idle_ttl_seconds: int = Field(
+        default=86400,
+        alias="SESSION_IDLE_TTL_SECONDS",
+        description="Tiempo de inactividad tras el cual una sesión se purga.",
+    )
+    attachment_max_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        alias="ATTACHMENT_MAX_BYTES",
+        description="Tamaño máximo aceptado por adjunto (bytes).",
+    )
 
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"

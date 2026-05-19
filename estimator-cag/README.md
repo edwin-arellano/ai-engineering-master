@@ -528,3 +528,121 @@ app/
 > Los scripts curl en `examples/` corresponden al endpoint stream
 > legacy y a respuestas en texto libre. Se mantienen sin mantenimiento
 > como referencia histórica y **no se actualizan** para session-04.
+
+---
+
+## Pre-sesión 05
+
+La rama `pre-session-05` transforma el servicio de "single-shot tipado" a
+"conversacional con memoria y adjuntos". El endpoint `POST /api/v1/estimate`
+desaparece; toda la interacción pasa por sesiones.
+
+### Endpoints
+
+- `POST /api/v1/sessions` → crea una sesión vacía y devuelve
+  `{session_id, created_at}` (HTTP 201).
+- `POST /api/v1/sessions/{session_id}/estimate` → `multipart/form-data` con
+  `transcript`, `project_type`, `detail_level`, `output_format` y un campo
+  `attachments` opcional (cero o más archivos PDF/.docx). Devuelve
+  `EstimationResponse` (HTTP 200).
+
+Errores HTTP estructurados:
+
+- `400 input_guardrail` con `detail.category` cuando regex/PII/Moderation
+  rechazan el input.
+- `404 session_not_found` si el `session_id` no existe o caducó por TTL idle.
+- `413 attachment_too_large` si un adjunto excede `ATTACHMENT_MAX_BYTES`.
+- `415 unsupported_attachment` si el MIME no es PDF ni .docx.
+
+### Variables de entorno nuevas
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `MAX_TURNS` | `6` | Pares user+assistant que sobreviven a la ventana deslizante del historial. |
+| `SESSION_IDLE_TTL_SECONDS` | `86400` | Inactividad tras la cual una sesión se purga (24 h). |
+| `ATTACHMENT_MAX_BYTES` | `10485760` | Tamaño máximo aceptado por adjunto (10 MB). |
+| `PROMPT_VERSION` | `v3` | Templates `app/prompts/estimation/v3/` activos por defecto. |
+
+### Memoria conversacional: tres estructuras independientes
+
+- `ConversationHistory` (`app/schemas/session.py`): array de pares
+  user/assistant con ventana deslizante (`MAX_TURNS`). El system prompt **no
+  vive aquí**; se regenera en cada turno desde el `project_metadata`. Eso es
+  lo que da resistencia al truncado.
+- `ProjectMetadata`: hechos destilados sobre el proyecto en curso
+  (`project_name`, `assumed_team_size`, `mentioned_technologies`,
+  `agreed_scope`). Sobrevive al truncado del historial.
+- `Session`: agregado con `session_id`, timestamps, `history` y
+  `project_metadata`. Vive en memoria del proceso vía `SessionStore`
+  (`threading.Lock` + TTL idle).
+
+### Adjuntos: camino B (extracción local)
+
+El servicio IA extrae el texto del PDF (`pypdf`) o del .docx (`python-docx`)
+y lo concatena al user prompt con delimitadores
+`<attachment filename="...">...</attachment>`. Mantiene la portabilidad del
+wrapper Instructor/LiteLLM (no nos atamos a la Files API de un proveedor) y
+prepara la pieza de chunking que entra con RAG en el módulo 3.
+
+Coste asumido: se pierde la información visual del PDF (diagramas
+embebidos). Para estimaciones de software, el texto cubre el caso 95%.
+
+### LLM extractor de `project_metadata`
+
+Tras cada turno, una segunda llamada a `complete_structured` con
+`response_model=ProjectMetadataUpdate` devuelve un patch con los hechos
+nuevos que aportó el intercambio. `ProjectMetadata.apply_patch` lo aplica
+**sin sobrescribir hechos previos con nulos**: las listas se mergean por
+unión y los escalares solo se actualizan cuando el patch trae valor no nulo.
+
+Coste: una llamada extra al LLM por turno (~1-2 s, céntimos). Aceptable a
+cambio de robustez frente a reformulaciones e idiomas mezclados.
+
+### Pipeline del endpoint conversacional
+
+```
+POST /api/v1/sessions/{id}/estimate
+ │
+ ├─ Cargar sesión (404 si caducada)
+ │
+ ├─ Extraer adjuntos (415 si MIME no soportado, 413 si demasiado grande)
+ │
+ ├─ Input guardrails sobre transcript + texto de adjuntos
+ │   └─ falla → 400 con {error, category, reason}
+ │
+ ├─ Render prompt v3 con project_metadata + bloque <attachments>
+ │
+ ├─ messages = history.to_api_messages(system) + último user
+ │
+ ├─ wrapper.complete_structured_with_messages → EstimationResult
+ │
+ ├─ extract_metadata_update (segunda llamada LLM)
+ │   └─ apply_patch sobre session.project_metadata
+ │
+ ├─ history.append_turn (ventana deslizante)
+ │
+ └─ session_store.save → 200 EstimationResponse
+```
+
+### Cache de S04: infraestructura dormida
+
+`app/services/cache/` sigue en el repo (clases `ExactMatchCache`,
+`SemanticCacheService`, `make_exact_match_key`, `make_bucket_key`) pero
+**no se invoca** desde el flujo conversacional. Justificación: la cache key
+en multi-turno depende de `(transcript, attachments, history, metadata)`,
+así que la tasa real de hits sería ínfima.
+
+Mantener la infra disponible es barato y deja la puerta abierta a usos
+futuros (cachear extracciones de PDF por hash, por ejemplo). El shim
+`app/schemas/estimation_compat.CachedRequest` da a las clases del cache un
+tipo válido sin reintroducir `EstimationRequest`.
+
+### Limitaciones documentadas
+
+- **Multi-worker**: `SessionStore` vive en memoria del proceso. Con
+  `uvicorn --workers N` un cliente puede aterrizar en un worker que no
+  conoce su `session_id`. Para multi-worker hay que migrar a Redis como
+  backend de sesiones; queda fuera de pre-S05.
+- **Persistencia**: el reinicio del servicio borra todas las sesiones.
+- **Panel de metadata en Streamlit**: optimista, sin endpoint `GET` de
+  sesión.

@@ -12,25 +12,30 @@ import pytest
 from app.prompts.loader import render_estimation_prompt
 from app.schemas.estimation import (
     DetailLevel,
-    EstimationRequest,
     OutputFormat,
     ProjectType,
 )
 
 
-def _make_request(**overrides) -> EstimationRequest:
-    """Construye un EstimationRequest con defaults sensatos, sobreescribibles."""
+def _make_kwargs(**overrides) -> dict:
+    """Construye un dict con los kwargs por defecto del loader, sobreescribibles.
+
+    Pre-S05 reemplaza `EstimationRequest` por kwargs explícitos en el loader.
+    Los tests v1/v2 fijan ``version`` al template histórico que están
+    verificando.
+    """
     defaults = {
         "description": (
             "Mobile app with login, chat and push notifications for a "
             "fitness tracker product targeting iOS and Android."
         ),
-        "project_type": ProjectType.MOBILE_APP,
-        "detail_level": DetailLevel.DETAILED,
-        "output_format": OutputFormat.PHASES_TABLE,
+        "project_type": ProjectType.MOBILE_APP.value,
+        "detail_level": DetailLevel.DETAILED.value,
+        "output_format": OutputFormat.PHASES_TABLE.value,
+        "version": "v1",
     }
     defaults.update(overrides)
-    return EstimationRequest(**defaults)
+    return defaults
 
 
 def test_user_template_includes_description_literally():
@@ -39,9 +44,7 @@ def test_user_template_includes_description_literally():
         "Mobile app with login, chat and push notifications for a "
         "fitness tracker product targeting iOS and Android."
     )
-    request = _make_request(description=description)
-
-    _, user = render_estimation_prompt(request)
+    _, user = render_estimation_prompt(**_make_kwargs(description=description))
 
     assert "<project_description>" in user
     assert "</project_description>" in user
@@ -53,66 +56,52 @@ def test_output_format_phases_table_includes_table_keywords():
 
     Y con output_format=narrative no aparecen (porque el if las omite).
     """
-    request_table = _make_request(output_format=OutputFormat.PHASES_TABLE)
-    request_narrative = _make_request(output_format=OutputFormat.NARRATIVE)
+    system_table, _ = render_estimation_prompt(
+        **_make_kwargs(output_format=OutputFormat.PHASES_TABLE.value)
+    )
+    system_narrative, _ = render_estimation_prompt(
+        **_make_kwargs(output_format=OutputFormat.NARRATIVE.value)
+    )
 
-    system_table, _ = render_estimation_prompt(request_table)
-    system_narrative, _ = render_estimation_prompt(request_narrative)
-
-    # Con phases_table aparecen las columnas
     assert "duration_weeks" in system_table
     assert "cost_eur" in system_table
     assert "confidence_pct" in system_table
 
-    # Con narrative SÍ aparecen las menciones porque los ejemplos few-shot
-    # (incluidos en todos los formatos) usan esas columnas. Lo que NO
-    # aparece con narrative es la instrucción de tabla en la sección
-    # output_format del system prompt.
     assert "Return a Markdown table" not in system_narrative
     assert "Return a flowing prose estimate" in system_narrative
 
 
 def test_detail_level_detailed_adds_assumptions_instruction():
-    """Con detail_level=detailed se añade la instrucción de listar asunciones.
-
-    Con detail_level=summary la instrucción NO aparece.
-    """
-    request_detailed = _make_request(detail_level=DetailLevel.DETAILED)
-    request_summary = _make_request(detail_level=DetailLevel.SUMMARY)
-
-    system_detailed, _ = render_estimation_prompt(request_detailed)
-    system_summary, _ = render_estimation_prompt(request_summary)
+    """Con detail_level=detailed se añade la instrucción de listar asunciones."""
+    system_detailed, _ = render_estimation_prompt(
+        **_make_kwargs(detail_level=DetailLevel.DETAILED.value)
+    )
+    system_summary, _ = render_estimation_prompt(
+        **_make_kwargs(detail_level=DetailLevel.SUMMARY.value)
+    )
 
     assert "confidence interval" in system_detailed.lower()
     assert "list the assumptions you made" in system_detailed.lower()
 
-    # En summary la instrucción explícita no aparece. Los ejemplos few-shot
-    # sí pueden mencionar la palabra "assumptions" porque uno de ellos la
-    # incluye, así que comprobamos solo la instrucción específica.
     assert "list the assumptions you made" not in system_summary.lower()
     assert "confidence interval" not in system_summary.lower()
 
 
 def test_project_type_is_humanised_in_system():
-    """El project_type debe aparecer con guiones bajos reemplazados por espacios.
+    """El project_type debe aparecer con guiones bajos reemplazados por espacios."""
+    system, _ = render_estimation_prompt(
+        **_make_kwargs(project_type=ProjectType.INTERNAL_TOOL.value)
+    )
 
-    El filtro `replace` se aplica en la línea "experienced in <project_type>"
-    del system prompt. Otras menciones (en los ejemplos few-shot, etc.) sí
-    usan el formato snake_case original.
-    """
-    request = _make_request(project_type=ProjectType.INTERNAL_TOOL)
-
-    system, _ = render_estimation_prompt(request)
-
-    # La línea humanizada existe
-    assert "experience in\ninternal tool projects" in system or "experience in internal tool projects" in system
+    assert (
+        "experience in\ninternal tool projects" in system
+        or "experience in internal tool projects" in system
+    )
 
 
 def test_examples_block_is_included():
     """El bloque de ejemplos few-shot debe estar incluido en el system."""
-    request = _make_request()
-
-    system, _ = render_estimation_prompt(request)
+    system, _ = render_estimation_prompt(**_make_kwargs())
 
     assert "<examples>" in system
     assert "</examples>" in system
