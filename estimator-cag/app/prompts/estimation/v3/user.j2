@@ -1,0 +1,13 @@
+<transcript>
+{{ description }}
+</transcript>
+{% if attachments_text %}
+
+<attachments>
+{{ attachments_text }}
+</attachments>
+
+Use the attachments as additional context, alongside the transcript. If they contradict the transcript, the transcript takes precedence.
+{% endif %}
+
+Return only the JSON object that conforms to the EstimationResult schema. Do not wrap it in markdown fences. Do not add any prose before or after it.

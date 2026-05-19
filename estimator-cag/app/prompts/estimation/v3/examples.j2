@@ -1,0 +1,159 @@
+Example 1 — Mobile app, detailed, phases_table:
+
+Input project_description:
+"Mobile app for booking medical appointments on iOS and Android, login,
+calendar with availability, push reminders, integration with a single external
+EMR via REST."
+
+Expected JSON:
+{
+  "summary": "Native mobile app on iOS and Android for booking medical appointments. The plan is broken into the phases below: discovery and architecture, authentication and onboarding, calendar core, EMR integration, and hardening. See `phases` for the canonical breakdown.",
+  "total_duration_weeks": 22,
+  "total_cost_eur": 132000,
+  "confidence_pct": 78,
+  "phases": [
+    {
+      "name": "Discovery and architecture",
+      "duration_weeks": 3,
+      "cost_eur": 18000,
+      "confidence_pct": 85,
+      "assumptions": [
+        "Single product manager and one tech lead allocated full-time",
+        "EMR API documentation available before kickoff",
+        "iOS 16+ and Android 12+ as minimum supported versions",
+        "App store accounts and signing certificates already provisioned",
+        "Design system reused from an existing internal app"
+      ]
+    },
+    {
+      "name": "Authentication and onboarding",
+      "duration_weeks": 4,
+      "cost_eur": 24000,
+      "confidence_pct": 80,
+      "assumptions": [
+        "Email + password plus social login (Google, Apple)",
+        "No biometric login in v1",
+        "Standard onboarding: 3 screens + permissions",
+        "Backend auth delegated to a managed provider (Auth0 or Cognito)",
+        "Push notification setup limited to FCM and APNs defaults"
+      ]
+    },
+    {
+      "name": "Calendar core",
+      "duration_weeks": 8,
+      "cost_eur": 48000,
+      "confidence_pct": 75,
+      "assumptions": [
+        "One doctor profile model with availability slots",
+        "Booking model with cancellation policy (24h window)",
+        "Timezone handling defaults to device timezone",
+        "Recurring availability supported via simple weekly rules",
+        "No multi-resource booking (rooms, equipment) in v1"
+      ]
+    },
+    {
+      "name": "EMR integration",
+      "duration_weeks": 5,
+      "cost_eur": 30000,
+      "confidence_pct": 70,
+      "assumptions": [
+        "Single EMR vendor, REST/JSON API",
+        "Read-only on patient data; write only on appointments",
+        "Retry-with-backoff for transient errors",
+        "Mapping table maintained in the backend, not on the device",
+        "Sandbox credentials available from week 1"
+      ]
+    },
+    {
+      "name": "Hardening, beta and store submission",
+      "duration_weeks": 2,
+      "cost_eur": 12000,
+      "confidence_pct": 80,
+      "assumptions": [
+        "Closed beta with 25 internal users",
+        "One round of accessibility audit (WCAG AA)",
+        "App store review buffer of one week absorbed within the phase",
+        "Crash reporting via Sentry",
+        "No staged rollout automation beyond default app store options"
+      ]
+    }
+  ]
+}
+
+Example 2 — Web SaaS, medium, line_items:
+
+Input project_description:
+"Internal SaaS dashboard for a fintech compliance team: list of flagged
+transactions, filters, export to CSV, role-based access."
+
+Expected JSON:
+{
+  "summary": "Internal compliance dashboard for a fintech team, scoped to a single tenant and roughly 12 weeks of work at ~78k EUR. The plan covers the data ingestion contract, the dashboard surface, role-based access, and an export pipeline; the audit log and SSO are explicitly out of scope for v1.",
+  "total_duration_weeks": 12,
+  "total_cost_eur": 78000,
+  "confidence_pct": 72,
+  "phases": [
+    {
+      "name": "Ingestion contract and read API",
+      "duration_weeks": 3,
+      "cost_eur": 19500,
+      "confidence_pct": 75,
+      "assumptions": [
+        "Source system exposes flagged-transaction events on a queue",
+        "Read API exposes filterable list endpoints",
+        "Postgres single-tenant database with row-level filters",
+        "No retention policy implemented in v1"
+      ]
+    },
+    {
+      "name": "Dashboard frontend",
+      "duration_weeks": 4,
+      "cost_eur": 26000,
+      "confidence_pct": 70,
+      "assumptions": [
+        "Single SPA using the existing internal design system",
+        "Filters: date range, status, amount, currency",
+        "Server-side pagination with cursor",
+        "No real-time updates; manual refresh button"
+      ]
+    },
+    {
+      "name": "Role-based access",
+      "duration_weeks": 2,
+      "cost_eur": 13000,
+      "confidence_pct": 75,
+      "assumptions": [
+        "Three roles: viewer, analyst, admin",
+        "Permissions evaluated server-side on every request",
+        "Admin role can change role assignments via internal CLI in v1"
+      ]
+    },
+    {
+      "name": "CSV export and hardening",
+      "duration_weeks": 3,
+      "cost_eur": 19500,
+      "confidence_pct": 70,
+      "assumptions": [
+        "Export caps at 50k rows synchronously, async beyond that",
+        "Sentry for errors; basic structured logs",
+        "No PDF export, no scheduled reports",
+        "Manual QA pass at the end of the phase"
+      ]
+    }
+  ]
+}
+
+Example 3 — Deliberately out-of-scope:
+
+Input project_description:
+"Reforma del cuarto de baño de mi casa, cambiar azulejos, instalar plato de
+ducha y nueva grifería. Tres semanas de obra."
+
+Expected JSON:
+{
+  "summary": "Out of scope: This description refers to a residential bathroom remodel, not a software development project. The estimator only supports software work (mobile apps, web SaaS, internal tools, integrations).",
+  "total_duration_weeks": 0,
+  "total_cost_eur": 0,
+  "confidence_pct": 0,
+  "phases": []
+}
