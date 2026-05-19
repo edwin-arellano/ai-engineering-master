@@ -17,14 +17,15 @@ import json
 import redis
 import structlog
 
-from app.schemas.estimation import EstimationRequest, EstimationResult
+from app.schemas.estimation import EstimationResult
+from app.schemas.estimation_compat import CachedRequest
 
 logger = structlog.get_logger(__name__)
 
 CACHE_KEY_PREFIX = "estimation:exact"
 
 
-def make_exact_match_key(request: EstimationRequest, prompt_version: str) -> str:
+def make_exact_match_key(request: CachedRequest, prompt_version: str) -> str:
     """Genera la clave exact-match a partir del request + versión del prompt.
 
     La serialización es JSON con claves ordenadas para que dos requests idénticos
