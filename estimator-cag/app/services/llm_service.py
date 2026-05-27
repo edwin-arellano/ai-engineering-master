@@ -100,9 +100,10 @@ def generate_estimation_in_session(
 
     # 2. Resolver tier.
     resolver = get_tier_resolver(s)
-    tier = resolver.resolve(
+    resolution = resolver.resolve(
         TierContext(transcript=transcript, project_metadata=session.project_metadata)
     )
+    tier = resolution.tier
 
     # 3-4. Despacho por modo.
     acb_result: ActorCriticBossResult | None = None

@@ -31,6 +31,7 @@ from app.schemas.estimation import (
     OutputFormat,
     ProjectType,
 )
+from app.schemas.observability import SessionDebugResponse, TurnObserved
 from app.schemas.session import (
     EstimationMode,
     Session,
@@ -156,3 +157,28 @@ async def estimate_in_session(
                 "reason": str(exc),
             },
         )
+
+
+@router.get("/sessions/{session_id}", response_model=SessionDebugResponse)
+def get_session_debug(session_id: str) -> SessionDebugResponse:
+    """Expone el estado de una sesión + el último turn_observed (debug/stress)."""
+    store = get_session_store()
+    try:
+        session = store.get(session_id)
+    except SessionNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "session_not_found", "session_id": session_id},
+        )
+    last = session.last_turn_observed
+    return SessionDebugResponse(
+        session_id=session.session_id,
+        estimation_mode=session.estimation_mode.value,
+        turn_count=session.turn_count,
+        message_count=len(session.history.messages),
+        anchors_count=len(session.history.anchored_facts),
+        summary_chars=len(session.history.running_summary or ""),
+        last_resolved_tier=session.last_resolved_tier,
+        last_tier_rule=session.last_tier_rule,
+        last_turn_observed=TurnObserved(**last) if last else None,
+    )
