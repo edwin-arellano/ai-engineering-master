@@ -21,39 +21,51 @@ from app.core.llm_wrapper import LLMWrapper
 from app.schemas.session import EstimationMode, Session
 from app.services.llm_service import generate_estimation_in_session
 from app.services.sessions import get_session_store
+from evals.metrics import (
+    ContentRecallMetric,
+    CostBoundsMetric,
+    Metric,
+    PhaseCountMetric,
+    SchemaAdherenceMetric,
+    run_all_metrics,
+)
 
 DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
 
 
-def _check_case(result_dict: dict, expected: dict) -> list[str]:
-    """Devuelve la lista de fallos (vacía si el caso pasa)."""
-    failures: list[str] = []
-    summary = result_dict.get("summary", "")
-    is_out = summary.startswith("Out of scope:")
+def _metrics_for_case(expected: dict) -> list[Metric]:
+    """Construye las métricas aplicables a un caso a partir de su `expected`.
 
-    if expected.get("out_of_scope"):
-        if not is_out:
-            failures.append("esperaba out_of_scope pero no lo es")
-        return failures  # para out-of-scope no validamos lo demás
-
-    if is_out:
-        failures.append("out_of_scope inesperado")
-        return failures
-
-    phases = result_dict.get("phases", [])
-    if "phase_count_range" in expected:
-        low, high = expected["phase_count_range"]
-        if not (low <= len(phases) <= high):
-            failures.append(f"phase_count {len(phases)} fuera de [{low}, {high}]")
-
-    if "cost_range_eur" in expected:
-        low, high = expected["cost_range_eur"]
-        cost = result_dict.get("total_cost_eur", 0)
-        # Tolerancia generosa en primera pasada (50%).
-        if not (low * 0.5 <= cost <= high * 1.5):
-            failures.append(f"cost {cost} fuera de [{low}, {high}] (con tolerancia)")
-
-    return failures
+    Para casos out-of-scope solo se evalúa la adherencia de schema (igual que el
+    `_check_case` original, que no validaba nada más en esos casos).
+    """
+    metrics: list[Metric] = [
+        SchemaAdherenceMetric(expected_out_of_scope=expected.get("out_of_scope", False))
+    ]
+    if not expected.get("out_of_scope"):
+        if "cost_range_eur" in expected:
+            low, high = expected["cost_range_eur"]
+            metrics.append(CostBoundsMetric(low=low, high=high))
+        if "phase_count_range" in expected:
+            low, high = expected["phase_count_range"]
+            metrics.append(PhaseCountMetric(low=low, high=high))
+        # `project_name_contains` es un término obligatorio único → require_all.
+        if expected.get("project_name_contains"):
+            metrics.append(
+                ContentRecallMetric(
+                    expected_terms=[expected["project_name_contains"]],
+                    require_all=True,
+                )
+            )
+        # `technologies_any_of` son alternativas → basta con que aparezca una.
+        if expected.get("technologies_any_of"):
+            metrics.append(
+                ContentRecallMetric(
+                    expected_terms=expected["technologies_any_of"],
+                    require_all=False,
+                )
+            )
+    return metrics
 
 
 def main() -> None:
@@ -90,7 +102,8 @@ def main() -> None:
                 settings=settings,
             )
             result_dict = response.result.model_dump()
-            failures = _check_case(result_dict, case["expected"])
+            results = run_all_metrics(_metrics_for_case(case["expected"]), result_dict)
+            failures = [r.name for r in results if not r.passed]
         except Exception as exc:  # noqa: BLE001
             failures = [f"excepción: {exc}"]
 

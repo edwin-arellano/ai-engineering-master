@@ -90,6 +90,14 @@ DEFAULT_RULES: tuple[TierRule, ...] = (
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class TierResolution:
+    """Resultado de resolver el tier: el tier ganador y la regla que lo decidió."""
+
+    tier: UserTier
+    rule_name: str
+
+
 class TierResolver:
     """Evalúa reglas en orden con fallback graceful."""
 
@@ -101,8 +109,8 @@ class TierResolver:
         self.rules = rules
         self.default_tier = default_tier
 
-    def resolve(self, ctx: TierContext) -> UserTier:
-        """Devuelve el primer tier que una regla resuelva, o el default."""
+    def resolve(self, ctx: TierContext) -> TierResolution:
+        """Devuelve el primer tier que una regla resuelva (con su regla), o el default."""
         for rule in self.rules:
             try:
                 outcome = rule(ctx)
@@ -116,9 +124,9 @@ class TierResolver:
             if outcome is not None:
                 tier, rule_name = outcome
                 logger.info("tier_resolved", tier=tier.value, rule=rule_name)
-                return tier
+                return TierResolution(tier=tier, rule_name=rule_name)
         logger.info("tier_resolved", tier=self.default_tier.value, rule="default")
-        return self.default_tier
+        return TierResolution(tier=self.default_tier, rule_name="default")
 
 
 def get_tier_resolver(settings: Settings | None = None) -> TierResolver:

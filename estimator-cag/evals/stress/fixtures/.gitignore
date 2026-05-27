@@ -1,0 +1,2 @@
+# PDFs sintéticos generados por build_pdfs.py — no se comitean (son regenerables).
+*.pdf

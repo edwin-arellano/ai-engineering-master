@@ -819,3 +819,154 @@ una conversación nueva.
   (DeepEval/GEval) queda para el bloque de evals avanzado.
 - **Sin propagación de tier por JWT/header**: el resolver heurístico
   interno es la versión sin backend de negocio externo.
+
+## Pre-sesión 06
+
+La rama `pre-session-06` **no construye RAG** (eso es el directo de la
+sesión 6). Construye el **baseline cuantitativo del CAG**: instrumenta el
+sistema, lo somete a tres escenarios de carga y produce un `REPORT.md` con
+tres curvas y dos párrafos de lectura. El objetivo es ver con datos propios
+**en qué eje se rompe el CAG** (latencia, coste o pérdida de memoria) antes
+de aceptar RAG como solución.
+
+Todo el bloque es **aditivo**: no cambia el comportamiento del CAG
+(`max_turns`, compresión, tier, ACB intactos) ni el resultado de ninguna
+estimación. El sink de métricas es opcional (default `None`); sin él, el
+comportamiento es idéntico al de session-05.
+
+### Bloque 0 — Nivelación (instrumentación)
+
+**Wrapper observable.** `complete_structured(...)` y
+`complete_structured_with_messages(...)` usan `create_with_completion(...)`
+de Instructor para capturar el `usage` crudo de LiteLLM. Un parámetro
+opcional `metrics: TurnMetrics | None = None` actúa como sink: cuando se
+pasa, el wrapper le agrega una `CallMetrics` (tokens, coste, latencia,
+modelo) por llamada. **El retorno no cambia** (sigue siendo la instancia
+Pydantic), así que ninguna de las 5+ rutas de llamada se rompe.
+
+- `app/core/pricing.py`: tabla `MODEL_COSTS` (USD por 1M tokens,
+  input/output) y `cost_for(model, tokens_in, tokens_out)`. Precios marcados
+  como placeholders a verificar; si el modelo no está tarifado, coste 0 + log
+  `pricing_model_unknown`.
+- `app/core/metrics.py`: `CallMetrics` (una llamada) y `TurnMetrics`
+  (acumulador del turno: `tokens_in/out`, `cost_usd`, `llm_latency_ms`,
+  `call_count`).
+
+**Framework de métricas de evals** (`evals/metrics.py`): patrón
+`MetricResult` (`name`, `score`, `passed`, `details`) + `run_all_metrics(...)`.
+Formaliza lo que `_check_case` hacía con asserts: `SchemaAdherenceMetric`,
+`CostBoundsMetric`, `PhaseCountMetric`, `ContentRecallMetric` (esta con flag
+`require_all` para distinguir `project_name_contains` de `technologies_any_of`).
+`evals/run.py` se refactoriza para usarlas; sigue in-process con
+`--max-cases`/`--mode`.
+
+**Endpoint debug**: `GET /api/v1/sessions/{session_id}` devuelve
+`SessionDebugResponse` con `turn_count`, `message_count`, `anchors_count`,
+`summary_chars`, `last_resolved_tier`, `last_tier_rule`, el último
+`turn_observed` y la memoria persistente (`last_summary`, `anchored_facts`,
+`project_metadata`). `TierResolver.resolve` ahora devuelve `TierResolution`
+(tier + `rule_name`).
+
+### Bloque 1 — Evento `turn_observed`
+
+`generate_estimation_in_session` crea un `TurnMetrics` por turno, lo propaga
+a todas las llamadas (actor, critic, boss, extractor) y, al cerrar el turno,
+emite `turn_observed` con **13 campos** y los persiste en la sesión:
+
+| Campo(s) | Significado |
+|---|---|
+| `turn_index`, `session_id` | identidad |
+| `enriched_transcript_chars`, `attachments_total_chars` | tamaño del input |
+| `messages_in_window`, `anchors_count`, `summary_chars` | estado de memoria |
+| `tokens_in`, `tokens_out`, `cost_usd` | agregado de **todas** las llamadas del turno |
+| `latency_ms` | **wall-clock del turno completo** (no la suma de latencias LLM) |
+| `cache_hit_kind` | siempre `"none"` (caché dormido) |
+| `last_resolved_tier` | tier del turno |
+
+### Stress test (`evals/stress/`)
+
+```
+evals/stress/
+├── scenarios.py        ← 3 perfiles: growing (20 turnos), pivot, contradiction
+├── fixtures/
+│   └── build_pdfs.py   ← PDFs sintéticos calibrados (5/20/50/100 KB), no se comitean
+├── metrics.py          ← LatencyBudgetMetric, CostBudgetMetric, MemoryDriftMetric
+├── run.py              ← runner --http → results.csv (resiliente a fallos)
+├── results.csv         ← deliverable (generado)
+└── REPORT.md           ← deliverable (3 curvas + lectura)
+```
+
+- **Escenarios**: `growing` (requisitos acumulándose, la curva larga a N=20),
+  `pivot` (cambia el stack en t5), `contradiction` (cambia el presupuesto en
+  t8). El `fact_to_remember` es un término corto buscable (`"Nimbus"`,
+  `"Flutter"`, `"30000"`) porque `MemoryDriftMetric` hace match literal
+  case-insensitive.
+- **`MemoryDriftMetric`** mide la **memoria persistente** (`running_summary` ∪
+  `anchored_facts` ∪ `project_metadata`), no el output del turno (que estaría
+  contaminado por los mensajes recientes sin comprimir).
+- **Runner**: golpea el endpoint HTTP real (latencia realista con overhead),
+  lee el snapshot vía `GET /sessions/{id}`, evalúa las tres métricas y vuelca
+  CSV. Un turno que devuelve 500 (el CAG no converge a un `EstimationResult`
+  válido tras los reintentos de Instructor) se **registra como dato**
+  (`http_status`), no aborta la corrida.
+
+Uso (el `SessionStore` es in-memory, no requiere Redis para el flujo
+conversacional):
+
+```bash
+# Terminal 1: servidor
+uv run uvicorn app.main:app
+
+# Terminal 2:
+uv run python -m evals.stress.fixtures.build_pdfs          # regenera los PDFs
+uv run python -m evals.stress.run --http http://localhost:8000 \
+    --scenarios growing,pivot,contradiction \
+    --attachment-sizes 0,100 --repeats 1 \
+    --output evals/stress/results.csv
+```
+
+### Hallazgo del baseline
+
+Sobre una corrida de 72 turnos (modo `actor`):
+
+- **La latencia domina**: el 99% de los turnos incumple un SLA de 4s (P50
+  ≈ 19s, P95 ≈ 63s, máx 108s) y crece con `tokens_in`.
+- **La memoria NO se degrada**: recall del `project_name` 100% hasta N=20 —
+  sobrevive en `project_metadata`, que se reinyecta cada turno.
+- **El coste crece** (×2.4 por turno en `growing`) pero en absoluto es bajo
+  ($0.27 por 20 turnos sin adjunto, $0.61 con adjunto de 100 KB).
+- **Fallos duros (500)** bajo contexto saturado (historial largo + adjunto
+  grande).
+
+Conclusión: el CAG se rompe por **latencia** (y fallos de validación bajo
+saturación), no por olvido. Eso justifica RAG: acotar `tokens_in`
+recuperando solo lo relevante. Detalle en `evals/stress/REPORT.md`.
+
+### Decisiones de la rama
+
+- **Sink opcional, no cambio de retorno**: instrumentar sin romper las 5+
+  rutas de llamada al wrapper.
+- **No se mueve el wrapper** de `app/core/` (el ejercicio citaba
+  `app/services/`); el pricing vive en `app/core/pricing.py`, junto al wrapper.
+- **`cache_hit_kind` siempre `"none"`**: el flujo conversacional no consulta
+  caché (heredado de pre-S05); se documenta como característica, no como fallo.
+- **El runner usa `--http`** para medir latencia con overhead de endpoint real.
+
+### Caveats documentados en el REPORT
+
+- **Caché dormido**: el CAG paga el contexto completo en cada turno (curva de
+  coste más empinada que con caché).
+- **El Router usa `routing_strategy="simple-shuffle"`** con primary + fallback
+  bajo el mismo alias → reparte llamadas entre Haiku y gpt-4o-mini; **no es
+  single-provider** como asumía el ejercicio. Comportamiento heredado de
+  session-05, no se tocó (la instrumentación es aditiva).
+- **Precios placeholders**: `MODEL_COSTS` debe verificarse contra tarifas
+  oficiales; lo que el baseline lee es la *forma* de la curva.
+
+### Limitaciones
+
+- **Sin `tiktoken`**: los tokens vienen de `response.usage` de LiteLLM (reales,
+  no estimados), pero la compresión sigue contando por turnos, no por tokens.
+- **Latencia con ruido**: el reparto de modelos del Router introduce varianza
+  turn-a-turno; la tendencia (latencia alta y creciente) es clara, el factor
+  exacto fluctúa entre corridas.

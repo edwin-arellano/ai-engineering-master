@@ -169,6 +169,14 @@ class Session(BaseModel):
     history: ConversationHistory = Field(default_factory=ConversationHistory)
     project_metadata: ProjectMetadata = Field(default_factory=ProjectMetadata)
 
+    # Observabilidad (pre-S06). El servicio los puebla al cerrar cada turno.
+    # `last_turn_observed` se guarda como dict para no acoplar este módulo con
+    # `app/schemas/observability.py`; el router lo reconstruye en `TurnObserved`.
+    turn_count: int = Field(default=0)
+    last_resolved_tier: str | None = Field(default=None)
+    last_tier_rule: str | None = Field(default=None)
+    last_turn_observed: dict | None = Field(default=None)
+
     def touch(self) -> None:
         self.last_activity_at = datetime.now(timezone.utc)
 
