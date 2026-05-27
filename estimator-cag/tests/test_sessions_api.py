@@ -135,8 +135,8 @@ async def test_history_never_exceeds_max_turns(asgi_client: AsyncClient) -> None
             session.history.append_turn(
                 user_content=f"user {i}",
                 assistant_content=f"assistant {i}",
-                max_turns=6,
             )
+            session.history._truncate(max_turns=6)
         store.save(session)
 
         fresh = store.get(session_id)

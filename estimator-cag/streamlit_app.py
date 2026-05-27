@@ -34,6 +34,7 @@ REQUEST_TIMEOUT = float(os.getenv("STREAMLIT_REQUEST_TIMEOUT", "180"))
 PROJECT_TYPES = ["mobile_app", "web_saas", "internal_tool", "integration", "other"]
 DETAIL_LEVELS = ["summary", "medium", "detailed"]
 OUTPUT_FORMATS = ["phases_table", "line_items", "narrative"]
+ESTIMATION_MODES = ["actor", "actor_critic_boss"]
 
 
 # ---------------------------------------------------------------------------
@@ -41,11 +42,13 @@ OUTPUT_FORMATS = ["phases_table", "line_items", "narrative"]
 # ---------------------------------------------------------------------------
 
 
-def _create_session() -> str | None:
+def _create_session(estimation_mode: str) -> str | None:
     """Crea una sesión nueva en el backend y devuelve su id."""
     try:
         with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-            response = client.post(SESSIONS_ENDPOINT)
+            response = client.post(
+                SESSIONS_ENDPOINT, json={"estimation_mode": estimation_mode}
+            )
         response.raise_for_status()
         return response.json()["session_id"]
     except (httpx.HTTPError, KeyError) as exc:
@@ -55,8 +58,10 @@ def _create_session() -> str | None:
 
 def _ensure_session() -> str | None:
     """Garantiza que ``session_state.session_id`` exista, creándolo si hace falta."""
+    if "estimation_mode" not in st.session_state:
+        st.session_state.estimation_mode = "actor"
     if "session_id" not in st.session_state:
-        session_id = _create_session()
+        session_id = _create_session(st.session_state.estimation_mode)
         if session_id is None:
             return None
         st.session_state.session_id = session_id
@@ -149,6 +154,27 @@ def _handle_error_response(status_code: int, detail: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _render_mode_selector() -> None:
+    """Selector de modo de estimación. Cambiarlo resetea la sesión."""
+    with st.sidebar:
+        st.markdown("### ⚙️ Mode")
+        current = st.session_state.get("estimation_mode", "actor")
+        chosen_mode = st.radio(
+            "Estimation mode",
+            options=ESTIMATION_MODES,
+            index=ESTIMATION_MODES.index(current),
+            help=(
+                "El modo se fija al crear la sesión. Cambiarlo arranca una "
+                "conversación nueva."
+            ),
+        )
+        if chosen_mode != current:
+            st.session_state.estimation_mode = chosen_mode
+            _reset_session()
+            st.rerun()
+        st.divider()
+
+
 def _render_metadata_panel() -> None:
     metadata = st.session_state.get("project_metadata") or {}
     with st.sidebar:
@@ -217,6 +243,36 @@ def _render_estimation(response: dict[str, Any]) -> None:
             )
 
     st.caption(f"Prompt version: `{prompt_version}`")
+
+
+def _render_acb_panel(response: dict[str, Any]) -> None:
+    """Muestra tier y, en modo ACB, las iteraciones con sus issues por severidad."""
+    tier = response.get("tier")
+    mode = response.get("estimation_mode")
+    if tier:
+        st.caption(f"Tier: `{tier}` · Mode: `{mode}`")
+    if mode != "actor_critic_boss":
+        return
+    converged = response.get("acb_converged")
+    total = response.get("acb_total_iterations")
+    badge = "✅ converged" if converged else "⚠️ synthesized (no consensus)"
+    st.markdown(f"**Actor-Critic-Boss** — {total} iteration(s) — {badge}")
+    for it in response.get("acb_iterations") or []:
+        feedback = it.get("critic_feedback", {})
+        decision = it.get("boss_decision", {})
+        with st.expander(
+            f"Iteration {it.get('iteration')} — verdict: "
+            f"{feedback.get('verdict')} → boss: {decision.get('decision')}"
+        ):
+            issues = feedback.get("issues", [])
+            if not issues:
+                st.caption("Sin issues en esta iteración.")
+            for issue in issues:
+                st.markdown(
+                    f"- **[{issue.get('severity')}]** `{issue.get('field_path')}`: "
+                    f"{issue.get('description')}  \n"
+                    f"  _Fix_: {issue.get('suggested_fix')}"
+                )
 
 
 def _render_history() -> None:
@@ -288,6 +344,8 @@ def main() -> None:
         "límite de la ventana deslizante del historial."
     )
 
+    _render_mode_selector()
+
     session_id = _ensure_session()
     if session_id is None:
         return
@@ -315,6 +373,7 @@ def main() -> None:
     if last_response is not None:
         st.divider()
         _render_estimation(last_response)
+        _render_acb_panel(last_response)
         _render_history()
 
 

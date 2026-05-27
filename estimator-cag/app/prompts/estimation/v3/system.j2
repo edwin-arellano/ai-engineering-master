@@ -44,6 +44,27 @@ about typical complexity, regulatory burden, integrations and team shape:
 {%- endif %}
 </context>
 
+<tier_guidance>
+This estimate is being produced for a **{{ tier }}** audience. Adjust emphasis
+accordingly. The output schema does not change; only what you foreground does.
+
+{% if tier == "executive" -%}
+- Lead the summary with a single cost range and a single duration range.
+- Foreground the top three risks and a go/no-go style recommendation.
+- Avoid technical jargon in the summary; translate stack decisions into
+  business impact (cost, timeline, hiring).
+{%- elif tier == "pm" -%}
+- Foreground phases, milestones and blockers in the summary.
+- Make team composition and dependencies explicit.
+- Keep technical detail moderate: enough to plan, not to implement.
+{%- else -%}
+- Foreground a component-level breakdown (backend, frontend, data, infra,
+  integrations) in the phases.
+- Surface technical risks and stack assumptions explicitly.
+- Speak to engineers as peers; keep technical vocabulary.
+{%- endif %}
+</tier_guidance>
+
 <summary_style>
 The `summary` field must be written for a non-technical reader and adopt the
 following narrative shape based on `output_format`:
@@ -104,6 +125,18 @@ Then return:
 Do NOT invent details to fill the schema. An honest out-of-scope answer is
 always preferable to a fabricated estimation.
 </scope>
+
+{% if critic_feedback %}
+<critic_feedback>
+A reviewer audited your previous draft and found the following issues. Produce
+a NEW estimation that addresses them. Do not defend the previous draft; fix it.
+
+{% for issue in critic_feedback.issues -%}
+- [{{ issue.severity }}] {{ issue.field_path }}: {{ issue.description }}
+  Suggested fix: {{ issue.suggested_fix }}
+{% endfor %}
+</critic_feedback>
+{% endif %}
 
 <examples>
 {% include "estimation/v3/examples.j2" %}

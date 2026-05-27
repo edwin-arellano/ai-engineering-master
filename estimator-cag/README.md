@@ -646,3 +646,176 @@ tipo válido sin reintroducir `EstimationRequest`.
 - **Persistencia**: el reinicio del servicio borra todas las sesiones.
 - **Panel de metadata en Streamlit**: optimista, sin endpoint `GET` de
   sesión.
+
+## Sesión 05
+
+Cuatro piezas avanzadas sobre el flujo conversacional de pre-S05:
+
+1. **Compresión híbrida con anclas** sustituye a la ventana deslizante
+   como estrategia de gestión de historial por defecto.
+2. **Tier dinámico** resuelto en runtime con un resolver heurístico de
+   reglas, materializado como bloque condicional en el system prompt v3.
+3. **Actor-Critic-Boss (ACB)**: tres roles aislados (genera, evalúa,
+   decide) que elevan la calidad de la estimación en los caminos
+   críticos. Es la pieza central de la sesión.
+4. **Evals con golden dataset**: script standalone (`evals/run.py`) que
+   evalúa el sistema contra ~16 casos curados al estilo de un test de
+   integración.
+
+### Compresión híbrida con anclas (default)
+
+Antonio en directo: la ventana deslizante "hay que evitarla como la
+peste" porque pierde compromisos críticos (un NDA del primer turno se
+cae de la ventana y el modelo empieza a dar información que no
+debería). El nuevo default es `COMPRESSION_POLICY=anchor_hybrid`. Dos
+componentes:
+
+- **Detector de anclas** 100% heurístico (regex), 8 reglas centradas en
+  temas críticos (NDA, contrato firmado, alcance cerrado, presupuesto
+  bloqueado, compliance, deadline, compromiso explícito, restricción
+  legal). **Solo escanea mensajes del usuario**: lo que diga el
+  assistant no genera anclas. Vive en
+  `app/services/sessions/compression/anchors.py`.
+- **Resumen acumulativo plano**, sin recursión (no resúmenes de
+  resúmenes). Integra el `running_summary` previo y los turnos a
+  comprimir en un resumen nuevo, preservando las anclas literalmente.
+
+La policy `sliding_window` queda disponible para volver al
+comportamiento de pre-S05; `cumulative` resume sin anclas.
+
+### Tier dinámico con resolver heurístico
+
+`TierResolver` evalúa una lista ordenada de reglas (`executive` → `pm`
+→ `developer`) y cae a `DEFAULT_TIER` si ninguna casa. Cada regla
+corre dentro de un `try/except`: si una regla rompe, el resolver
+loguea y pasa a la siguiente — disciplina de "flujos deterministas
+con piezas tolerantes a fallos".
+
+**El tier se materializa como bloque condicional en
+`v3/system.j2`** (`<tier_guidance>`), no como template+schema por
+tier. `EstimationResult` sigue siendo único. Razón: el estimator no
+tiene backend de negocio separado (no hay JWT), y el directo
+simplificó deliberadamente la propuesta teórica de S5-04. Cambia solo
+qué se foreground en el summary; el schema de salida no cambia.
+
+### Actor-Critic-Boss
+
+Tres roles **aislados** (ningún rol conoce a los otros) que orquestan
+una estimación de mayor calidad:
+
+- **Actor** (`_run_actor` en `app/services/llm_service.py`): la única
+  ruta de generación. Se reutiliza en modo `actor` y dentro del loop
+  ACB; cuando hay `critic_feedback`, el prompt v3 inyecta el bloque
+  `<critic_feedback>` para que itere.
+- **Critic** (`app/services/actor_critic_boss/critic.py`): audita la
+  estimación. **Nunca reescribe**, solo marca con `field_path`
+  concreto (`summary`, `phases[2].duration_weeks`, etc.) +
+  `suggested_fix` obligatorio. Fallback graceful: si el LLM falla,
+  devuelve `CriticFeedback.empty_accept()` y el flujo sigue.
+- **Boss** (`app/services/actor_critic_boss/boss.py`): orquesta el
+  loop con presupuesto duro de `ACB_MAX_ITERATIONS` (default 3).
+  Decisión determinista (`accept`/`iterate`/`synthesize`); la
+  síntesis es **el camino habitual**, no la excepción: con modelos de
+  tier bajo, actor y crítico raramente convergen. El boss recibe
+  `run_actor` por inyección para no acoplarse al actor.
+
+El modo se fija al crear la sesión: `POST /api/v1/sessions` acepta
+`{"estimation_mode": "actor" | "actor_critic_boss"}` (default
+`actor`). Todos los turnos de esa sesión respetan el modo.
+
+### Evals con golden dataset
+
+`evals/run.py` es un script standalone, fuera de `app/` y `tests/`.
+Carga `evals/golden_dataset.json` (~16 casos: happy paths, multi
+componente, integraciones, multilingüe, out-of-scope, vagos) y corre
+el pipeline contra cada caso, reportando `PASS`/`FAIL`. No se añade
+DeepEval ni juez LLM en esta rama.
+
+Uso:
+
+```bash
+uv run python -m evals.run                 # todos los casos, modo actor
+uv run python -m evals.run --max-cases 8   # primeros 8
+uv run python -m evals.run --mode actor_critic_boss
+```
+
+### Pipeline del turno (orden estricto)
+
+```
+1. validate_input (guardrails: regex injection + PII + Moderation)
+2. resolver tier (heurístico, fallback graceful por regla)
+3. render prompt v3 (con tier_guidance + project_metadata + adjuntos)
+4. despacho por modo:
+     - actor                → _run_actor(...)
+     - actor_critic_boss    → BossService.run(...) (loop actor↔critic + síntesis)
+5. (output guardrails sobre el EstimationResult)
+6. apply_compression (anchor_hybrid | sliding_window | cumulative)
+7. extract_metadata_update (LLM extractor) → ProjectMetadata.apply_patch
+8. session_store.save(...) → devolver EstimationResponse enriquecido
+```
+
+`EstimationResponse` añade `tier`, `estimation_mode` y, en modo ACB,
+`acb_converged` + `acb_total_iterations` + `acb_iterations[]` con el
+veredicto del crítico y la decisión del boss por iteración.
+
+### Variables de entorno nuevas
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `DEFAULT_TIER` | `developer` | Tier al que cae el resolver si ninguna regla aplica. |
+| `COMPRESSION_POLICY` | `anchor_hybrid` | `anchor_hybrid` \| `sliding_window` \| `cumulative`. |
+| `COMPRESSION_TRIGGER_TURNS` | `6` | Nº de pares user+assistant a partir del cual se comprime. |
+| `COMPRESSION_KEEP_RECENT_TURNS` | `3` | Pares recientes preservados tras la compresión. |
+| `ACB_MAX_ITERATIONS` | `3` | Presupuesto duro del loop del boss. |
+| `CRITIC_PROMPT_VERSION` | `v1` | Versión del prompt del crítico. |
+| `BOSS_PROMPT_VERSION` | `v1` | Versión del prompt del boss (síntesis). |
+| `SUMMARIZER_PROMPT_VERSION` | `v1` | Versión del prompt del summarizer. |
+
+### Cómo activar el modo ACB
+
+Al crear la sesión:
+
+```bash
+SID=$(curl -sS -X POST http://localhost:8000/api/v1/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"estimation_mode":"actor_critic_boss"}' | jq -r .session_id)
+```
+
+A partir de ahí, todos los turnos de esa sesión usan ACB. La UI
+Streamlit expone un selector de modo en el sidebar; cambiarlo crea
+una conversación nueva.
+
+### Streamlit
+
+- **Selector de modo** en el sidebar (`actor` / `actor_critic_boss`)
+  antes del panel de metadata.
+- **Tier resuelto y modo** se muestran como caption al pie de cada
+  respuesta.
+- **Panel ACB** con un badge de convergencia y expanders por iteración
+  con los issues del crítico formateados por severidad.
+
+### Decisiones de la rama
+
+- La compresión con anclas **reemplaza** la ventana deslizante como
+  default. Las anclas se detectan en cada turno (no solo al disparar
+  la compresión) para no perderlas si el turno cae luego.
+- El tier es un **bloque condicional** en `v3/system.j2`, no un
+  template ni un schema separado por tier (justificación arriba).
+- El crítico **nunca devuelve una estimación**: su schema
+  `CriticFeedback` no contiene `EstimationResult`.
+- Los tres roles ACB están **aislados**: `critic.py` no importa
+  `boss.py`; el boss recibe `run_actor` por inyección.
+- Fallback graceful en críticos y boss: una pieza caída degrada, no
+  rompe.
+
+### Limitaciones (heredadas + nuevas)
+
+- **Compresión por número de turnos**, no por tokens reales. `tiktoken`
+  sería la mejora futura.
+- **Anclas heurísticas**, no LLM. Determinista y barato, pero rígido;
+  añadir patrones es trivial.
+- **Sin LLM-as-judge en evals**: las assertions son deterministas
+  (out-of-scope, rango de fases, rango de coste). El juez LLM
+  (DeepEval/GEval) queda para el bloque de evals avanzado.
+- **Sin propagación de tier por JWT/header**: el resolver heurístico
+  interno es la versión sin backend de negocio externo.

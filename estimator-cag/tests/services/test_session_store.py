@@ -67,8 +67,8 @@ def test_history_sliding_window() -> None:
         session.history.append_turn(
             user_content=f"user message {i}",
             assistant_content=f"assistant reply {i}",
-            max_turns=3,
         )
+        session.history._truncate(max_turns=3)
 
     # 3 pares × 2 mensajes = 6 mensajes en total.
     assert len(session.history.messages) == 6

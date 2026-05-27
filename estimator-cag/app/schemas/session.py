@@ -1,23 +1,16 @@
 """Schemas del dominio de sesiones conversacionales.
 
-Tres estructuras de estado independientes:
-
-- ``ConversationHistory``: array de mensajes con lógica de ventana deslizante.
-  Persiste solo los últimos N pares user+assistant.
-- ``ProjectMetadata``: hechos destilados sobre el proyecto en curso. Sobrevive
-  al truncado del historial — esta es la propiedad clave que da resistencia
-  a la conversación frente al límite de la ventana.
-- ``Session``: agregado que contiene ambas estructuras más metadatos
-  (``session_id``, timestamps).
-
-``ProjectMetadataUpdate`` es el shape que el LLM extractor devuelve tras cada
-turno: una versión parcial de ``ProjectMetadata`` donde todos los campos son
-opcionales y se aplica como patch sobre el estado actual.
+S05 añade:
+- `estimation_mode` en la sesión (actor | actor_critic_boss).
+- `running_summary` y `anchored_facts` en el historial, para la compresión
+  híbrida con anclas. `to_api_messages` ahora antepone el resumen y las anclas
+  al bloque de mensajes recientes.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Literal
 from uuid import uuid4
 
@@ -25,25 +18,29 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
-# Memoria: hechos destilados del proyecto
+# Modo de estimación
+# ---------------------------------------------------------------------------
+
+
+class EstimationMode(StrEnum):
+    """Modo con el que se generan las estimaciones de una sesión."""
+
+    ACTOR = "actor"
+    ACTOR_CRITIC_BOSS = "actor_critic_boss"
+
+
+# ---------------------------------------------------------------------------
+# Memoria
 # ---------------------------------------------------------------------------
 
 
 class ProjectMetadata(BaseModel):
-    """Conocimiento acumulado sobre el proyecto que se está estimando.
-
-    Independiente del historial: sobrevive al truncado de la ventana deslizante.
-    Se inyecta en el system prompt de cada turno como bloque
-    ``<project_metadata>``.
-    """
-
     project_name: str | None = Field(default=None, max_length=200)
     assumed_team_size: int | None = Field(default=None, ge=0, le=200)
     mentioned_technologies: list[str] = Field(default_factory=list, max_length=50)
     agreed_scope: str | None = Field(default=None, max_length=2000)
 
     def is_empty(self) -> bool:
-        """True si ningún campo se ha poblado todavía."""
         return (
             self.project_name is None
             and self.assumed_team_size is None
@@ -52,20 +49,10 @@ class ProjectMetadata(BaseModel):
         )
 
     def apply_patch(self, patch: "ProjectMetadataUpdate") -> "ProjectMetadata":
-        """Aplica un patch del LLM extractor preservando lo ya conocido.
-
-        Reglas:
-        - Campos escalares (``project_name``, ``assumed_team_size``,
-          ``agreed_scope``) solo se sobrescriben si el patch trae un valor no
-          nulo.
-        - ``mentioned_technologies`` se mergea por unión (nunca se reemplaza),
-          conservando el orden de aparición.
-        """
         merged_technologies = list(self.mentioned_technologies)
         for tech in patch.mentioned_technologies or []:
             if tech and tech not in merged_technologies:
                 merged_technologies.append(tech)
-
         return ProjectMetadata(
             project_name=patch.project_name or self.project_name,
             assumed_team_size=(
@@ -79,12 +66,6 @@ class ProjectMetadata(BaseModel):
 
 
 class ProjectMetadataUpdate(BaseModel):
-    """Shape que el LLM extractor devuelve después de cada turno.
-
-    Todos los campos son opcionales: el modelo solo rellena los que ha podido
-    deducir del intercambio user/assistant más reciente.
-    """
-
     project_name: str | None = Field(default=None, max_length=200)
     assumed_team_size: int | None = Field(default=None, ge=0, le=200)
     mentioned_technologies: list[str] | None = Field(default=None, max_length=50)
@@ -92,7 +73,7 @@ class ProjectMetadataUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Historial: mensajes de la conversación
+# Historial con soporte de compresión
 # ---------------------------------------------------------------------------
 
 
@@ -100,8 +81,6 @@ ChatRole = Literal["user", "assistant"]
 
 
 class ChatMessage(BaseModel):
-    """Mensaje individual del historial. El system prompt vive aparte."""
-
     role: ChatRole
     content: str
 
@@ -114,59 +93,83 @@ class ChatMessage(BaseModel):
 
 
 class ConversationHistory(BaseModel):
-    """Lista limitada de mensajes con ventana deslizante.
+    """Historial con ventana reciente + resumen acumulativo + anclas.
 
-    El system prompt NO vive aquí: se regenera en cada llamada al LLM a partir
-    del ``project_metadata`` actual de la sesión, por lo que ``messages`` solo
-    contiene pares user/assistant.
+    `messages` mantiene los pares user/assistant recientes (no comprimidos).
+    `running_summary` es el resumen acumulativo plano de los turnos antiguos.
+    `anchored_facts` son los hechos críticos detectados heurísticamente que
+    siempre viajan al contexto, sobrevivan o no a la compresión.
     """
 
     messages: list[ChatMessage] = Field(default_factory=list)
+    running_summary: str | None = Field(default=None)
+    anchored_facts: list[str] = Field(default_factory=list)
 
-    def append_turn(
-        self, user_content: str, assistant_content: str, max_turns: int
-    ) -> None:
-        """Añade un par user+assistant y aplica la ventana deslizante."""
+    def append_turn(self, user_content: str, assistant_content: str) -> None:
+        """Añade un par user+assistant SIN truncar.
+
+        El truncado/compresión lo gestiona `apply_compression` (S05). Mantener
+        el append separado del truncado permite elegir la policy en runtime.
+        """
         self.messages.append(ChatMessage(role="user", content=user_content))
         self.messages.append(ChatMessage(role="assistant", content=assistant_content))
-        self._truncate(max_turns)
 
     def _truncate(self, max_turns: int) -> None:
-        """Descarta los pares más antiguos hasta dejar ``max_turns`` pares."""
+        """Ventana deslizante. Disponible como policy `sliding_window`.
+
+        Ya no es el camino por defecto (ver `apply_compression`).
+        """
         max_messages = max_turns * 2
         if len(self.messages) > max_messages:
             self.messages = self.messages[-max_messages:]
 
     def to_api_messages(self, system_prompt: str) -> list[dict[str, str]]:
-        """Construye el array ``messages`` listo para pasar al LLM."""
-        return [{"role": "system", "content": system_prompt}] + [
-            {"role": msg.role, "content": msg.content} for msg in self.messages
+        """Construye el array `messages` para el LLM.
+
+        Orden: system → (resumen + anclas, si existen) → mensajes recientes.
+        El resumen y las anclas se inyectan como un único mensaje de rol `user`
+        etiquetado, para que el modelo lo trate como contexto previo.
+        """
+        api_messages: list[dict[str, str]] = [
+            {"role": "system", "content": system_prompt}
         ]
+
+        context_parts: list[str] = []
+        if self.running_summary:
+            context_parts.append(
+                f"<conversation_summary>\n{self.running_summary}\n</conversation_summary>"
+            )
+        if self.anchored_facts:
+            facts = "\n".join(f"- {fact}" for fact in self.anchored_facts)
+            context_parts.append(f"<anchored_facts>\n{facts}\n</anchored_facts>")
+
+        if context_parts:
+            api_messages.append(
+                {"role": "user", "content": "\n\n".join(context_parts)}
+            )
+
+        api_messages.extend(
+            {"role": msg.role, "content": msg.content} for msg in self.messages
+        )
+        return api_messages
 
 
 # ---------------------------------------------------------------------------
-# Sesión: agregado de historial + memoria + metadatos
+# Sesión
 # ---------------------------------------------------------------------------
 
 
 class Session(BaseModel):
-    """Agregado de estado de una sesión conversacional.
-
-    Volatilidad aceptada: vive solo en memoria del proceso. Si el servicio se
-    reinicia, las sesiones se pierden. La persistencia es responsabilidad del
-    bloque de producción/escalado, no del modelado de CAG.
-    """
-
     session_id: str = Field(default_factory=lambda: str(uuid4()))
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_activity_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
+    estimation_mode: EstimationMode = Field(default=EstimationMode.ACTOR)
     history: ConversationHistory = Field(default_factory=ConversationHistory)
     project_metadata: ProjectMetadata = Field(default_factory=ProjectMetadata)
 
     def touch(self) -> None:
-        """Actualiza ``last_activity_at`` para que el TTL idle no purgue la sesión."""
         self.last_activity_at = datetime.now(timezone.utc)
 
 
@@ -175,8 +178,24 @@ class Session(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class SessionCreateResponse(BaseModel):
-    """Body devuelto por ``POST /api/v1/sessions``."""
+class SessionCreateRequest(BaseModel):
+    """Body opcional de `POST /api/v1/sessions`."""
 
+    estimation_mode: EstimationMode = Field(default=EstimationMode.ACTOR)
+
+
+class SessionCreateResponse(BaseModel):
     session_id: str
     created_at: datetime
+    estimation_mode: EstimationMode
+
+
+# ---------------------------------------------------------------------------
+# Envelopes internos (uso de Instructor en el summarizer S05)
+# ---------------------------------------------------------------------------
+
+
+class _SummaryEnvelope(BaseModel):
+    """Envoltorio del resumen para Instructor (response_model)."""
+
+    summary: str = Field(..., min_length=1, max_length=4000)
