@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import statistics
+import time
 from pathlib import Path
 
 import httpx
@@ -33,6 +34,7 @@ from evals.stress.scenarios import SCENARIOS
 
 CSV_FIELDS = [
     "scenario", "attachment_kb", "repeat", "turn_index", "session_id",
+    "http_status",
     "enriched_transcript_chars", "attachments_total_chars", "messages_in_window",
     "anchors_count", "summary_chars", "tokens_in", "tokens_out", "cost_usd",
     "latency_ms", "cache_hit_kind", "last_resolved_tier",
@@ -78,42 +80,72 @@ def main() -> None:
                         }
 
                     for turn in _turns_for(scenario, args.n_cap):
-                        resp = client.post(
-                            f"/api/v1/sessions/{session_id}/estimate",
-                            data={
-                                "transcript": turn.transcript,
-                                "project_type": "web_saas",
-                                "detail_level": "medium",
-                                "output_format": "phases_table",
-                            },
-                            files=files,
-                        )
-                        resp.raise_for_status()
+                        started = time.perf_counter()
+                        try:
+                            resp = client.post(
+                                f"/api/v1/sessions/{session_id}/estimate",
+                                data={
+                                    "transcript": turn.transcript,
+                                    "project_type": "web_saas",
+                                    "detail_level": "medium",
+                                    "output_format": "phases_table",
+                                },
+                                files=files,
+                            )
+                            resp.raise_for_status()
+                            http_status: int | None = resp.status_code
+                        except httpx.HTTPStatusError as exc:
+                            http_status = exc.response.status_code
+                        except httpx.RequestError:
+                            http_status = None
 
-                        # El snapshot del endpoint es autosuficiente: trae el
-                        # turn_observed (latencia/coste) y la memoria persistente.
-                        snapshot = client.get(
-                            f"/api/v1/sessions/{session_id}"
-                        ).json()
-                        observed = snapshot["last_turn_observed"] or {}
+                        if http_status == 200:
+                            # El snapshot del endpoint es autosuficiente: trae el
+                            # turn_observed (latencia/coste) y la memoria persistente.
+                            snapshot = client.get(
+                                f"/api/v1/sessions/{session_id}"
+                            ).json()
+                            observed = snapshot["last_turn_observed"] or {}
+                            lat = LatencyBudgetMetric(args.latency_budget_ms).evaluate(
+                                observed
+                            )
+                            cost = CostBudgetMetric(args.cost_budget_usd).evaluate(
+                                observed
+                            )
+                            drift = MemoryDriftMetric(turn.fact_to_remember).evaluate(
+                                snapshot
+                            )
+                            row = {
+                                **observed,
+                                "latency_budget_passed": lat.passed,
+                                "cost_budget_passed": cost.passed,
+                                "memory_drift_passed": drift.passed,
+                            }
+                        else:
+                            # Turno fallido: el CAG no convergió a un EstimationResult
+                            # válido tras los reintentos de Instructor (500), o hubo un
+                            # error de transporte. Se registra como dato del baseline
+                            # ("en qué turno se rompe el CAG") en vez de abortar.
+                            row = {
+                                "session_id": session_id,
+                                "latency_ms": round(
+                                    (time.perf_counter() - started) * 1000, 2
+                                ),
+                                "latency_budget_passed": False,
+                                "cost_budget_passed": False,
+                                "memory_drift_passed": False,
+                            }
 
-                        lat = LatencyBudgetMetric(args.latency_budget_ms).evaluate(
-                            observed
+                        # `turn_index` del escenario (no el turn_count del snapshot,
+                        # que se desfasaría tras un turno fallido): es el eje N de las
+                        # curvas del REPORT.
+                        row.update(
+                            scenario=scen_name,
+                            attachment_kb=kb,
+                            repeat=repeat,
+                            turn_index=turn.turn_index,
+                            http_status=http_status,
                         )
-                        cost = CostBudgetMetric(args.cost_budget_usd).evaluate(observed)
-                        drift = MemoryDriftMetric(turn.fact_to_remember).evaluate(
-                            snapshot
-                        )
-
-                        row = {
-                            **observed,
-                            "scenario": scen_name,
-                            "attachment_kb": kb,
-                            "repeat": repeat,
-                            "latency_budget_passed": lat.passed,
-                            "cost_budget_passed": cost.passed,
-                            "memory_drift_passed": drift.passed,
-                        }
                         rows.append({k: row.get(k) for k in CSV_FIELDS})
 
     out = Path(args.output)
@@ -123,13 +155,21 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-    # Resumen por consola.
-    latencies = [r["latency_ms"] for r in rows if r["latency_ms"] is not None]
+    # Resumen por consola. La latencia P50/P95 se calcula solo sobre turnos
+    # exitosos (200); los fallos se cuentan aparte.
+    failures = sum(1 for r in rows if r["http_status"] != 200)
+    latencies = [
+        r["latency_ms"]
+        for r in rows
+        if r["http_status"] == 200 and r["latency_ms"] is not None
+    ]
+    summary = f"Filas: {len(rows)} | fallos: {failures}"
     if latencies:
         latencies.sort()
         p50 = statistics.median(latencies)
         p95 = latencies[int(len(latencies) * 0.95) - 1]
-        print(f"Filas: {len(rows)} | P50 latency: {p50:.0f}ms | P95: {p95:.0f}ms")
+        summary += f" | P50 latency: {p50:.0f}ms | P95: {p95:.0f}ms"
+    print(summary)
     print(f"CSV → {out}")
 
 

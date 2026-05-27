@@ -19,6 +19,9 @@ MODEL_COSTS: dict[str, tuple[float, float]] = {
     "anthropic/claude-haiku-4-5-20251001": (1.00, 5.00),  # ⚠️ verificar
     "gpt-4o-mini": (0.15, 0.60),  # ⚠️ verificar
     "openai/gpt-4o-mini": (0.15, 0.60),  # ⚠️ verificar
+    # LiteLLM reporta el fallback de OpenAI con sufijo de fecha; sin esta entrada
+    # el coste de esas llamadas salía 0 (pricing_model_unknown).
+    "gpt-4o-mini-2024-07-18": (0.15, 0.60),  # ⚠️ verificar
 }
 
 # Fallback conservador cuando el modelo no está en la tabla: evita romper la
