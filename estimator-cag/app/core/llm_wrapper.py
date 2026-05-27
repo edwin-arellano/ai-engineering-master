@@ -20,6 +20,8 @@ import structlog
 from litellm import Router
 
 from app.config import Settings
+from app.core.metrics import CallMetrics, TurnMetrics
+from app.core.pricing import cost_for, is_known_model
 
 logger = structlog.get_logger(__name__)
 
@@ -108,6 +110,7 @@ class LLMWrapper:
         max_tokens: int = 4000,
         temperature: float = 0.3,
         max_retries: int = 3,
+        metrics: TurnMetrics | None = None,
     ) -> T:
         """Llama al LLM y devuelve una instancia tipada de `response_model`.
 
@@ -115,6 +118,9 @@ class LLMWrapper:
           validators de Pydantic fallan (no los reintentos de red del Router).
         - El retorno es directamente la instancia validada; si Instructor agota
           sus reintentos, propaga la excepción al servicio que llamó.
+        - `metrics` es un sink opcional: cuando se pasa, se le agrega una
+          `CallMetrics` con tokens y coste de esta llamada. Cuando es `None`
+          (default), el comportamiento es idéntico al histórico.
         """
         started_at = time.perf_counter()
         logger.info(
@@ -125,18 +131,21 @@ class LLMWrapper:
             max_retries=max_retries,
         )
         try:
-            # Instructor 1.x expone una API tipo chat.completions.create(...)
-            # — no es invocable directamente como en versiones antiguas.
-            result = self._structured_client.chat.completions.create(
-                model=ROUTER_ALIAS,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
-                response_model=response_model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                max_retries=max_retries,
+            # `create_with_completion` devuelve `(instancia, completion_cruda)`.
+            # El completion crudo expone `usage` (tokens) y `model` (el modelo
+            # efectivo que respondió), que Instructor descarta en `create`.
+            result, completion = (
+                self._structured_client.chat.completions.create_with_completion(
+                    model=ROUTER_ALIAS,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    response_model=response_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_retries=max_retries,
+                )
             )
         except Exception as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
@@ -148,11 +157,18 @@ class LLMWrapper:
             )
             raise
         latency_ms = (time.perf_counter() - started_at) * 1000
+        call = self._build_call_metrics(completion, latency_ms)
         logger.info(
             "llm_call_completed",
             response_model=response_model.__name__,
             latency_ms=round(latency_ms, 2),
+            tokens_in=call.tokens_in,
+            tokens_out=call.tokens_out,
+            cost_usd=round(call.cost_usd, 6),
+            model=call.model,
         )
+        if metrics is not None:
+            metrics.add(call)
         return result
 
     def complete_structured_with_messages(
@@ -163,13 +179,15 @@ class LLMWrapper:
         max_tokens: int = 4000,
         temperature: float = 0.3,
         max_retries: int = 3,
+        metrics: TurnMetrics | None = None,
     ) -> T:
         """Variante de ``complete_structured`` que recibe el array ``messages`` ya armado.
 
         Útil para flujos conversacionales donde el historial vive entre el
         system y el último user. La lógica del LLM es la misma; solo cambia el
         shape del input para no obligar al caller a pasarlo como un par
-        ``(system_prompt, user_message)``.
+        ``(system_prompt, user_message)``. ``metrics`` es el mismo sink opcional
+        que en ``complete_structured``.
         """
         started_at = time.perf_counter()
         logger.info(
@@ -181,13 +199,15 @@ class LLMWrapper:
             max_retries=max_retries,
         )
         try:
-            result = self._structured_client.chat.completions.create(
-                model=ROUTER_ALIAS,
-                messages=messages,
-                response_model=response_model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                max_retries=max_retries,
+            result, completion = (
+                self._structured_client.chat.completions.create_with_completion(
+                    model=ROUTER_ALIAS,
+                    messages=messages,
+                    response_model=response_model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_retries=max_retries,
+                )
             )
         except Exception as exc:
             latency_ms = (time.perf_counter() - started_at) * 1000
@@ -199,9 +219,39 @@ class LLMWrapper:
             )
             raise
         latency_ms = (time.perf_counter() - started_at) * 1000
+        call = self._build_call_metrics(completion, latency_ms)
         logger.info(
             "llm_call_completed",
             response_model=response_model.__name__,
             latency_ms=round(latency_ms, 2),
+            tokens_in=call.tokens_in,
+            tokens_out=call.tokens_out,
+            cost_usd=round(call.cost_usd, 6),
+            model=call.model,
         )
+        if metrics is not None:
+            metrics.add(call)
         return result
+
+    def _build_call_metrics(self, completion, latency_ms: float) -> CallMetrics:
+        """Extrae usage del completion de LiteLLM y calcula coste.
+
+        LiteLLM normaliza `completion.usage` con `prompt_tokens`/`completion_tokens`.
+        `completion.model` trae el modelo efectivo (el que respondió: primary o fallback).
+        """
+        usage = getattr(completion, "usage", None)
+        tokens_in = getattr(usage, "prompt_tokens", 0) or 0
+        tokens_out = getattr(usage, "completion_tokens", 0) or 0
+        model = getattr(completion, "model", "unknown") or "unknown"
+        provider = _parse_provider(model)  # reusa el helper de módulo existente
+        if not is_known_model(model):
+            logger.warning("pricing_model_unknown", model=model)
+        cost = cost_for(model, tokens_in, tokens_out)
+        return CallMetrics(
+            model=model,
+            provider=provider,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+        )

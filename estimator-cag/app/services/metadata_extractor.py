@@ -19,6 +19,7 @@ from __future__ import annotations
 import structlog
 
 from app.core.llm_wrapper import LLMWrapper
+from app.core.metrics import TurnMetrics
 from app.prompts.loader import render_metadata_extractor_prompt
 from app.schemas.session import ProjectMetadata, ProjectMetadataUpdate
 
@@ -31,6 +32,7 @@ def extract_metadata_update(
     transcript: str,
     assistant_response: str,
     current_metadata: ProjectMetadata,
+    metrics: TurnMetrics | None = None,
 ) -> ProjectMetadataUpdate:
     """Llama al LLM para deducir qué hechos nuevos aporta el último turno.
 
@@ -51,6 +53,7 @@ def extract_metadata_update(
             max_tokens=1000,
             temperature=0.0,
             max_retries=2,
+            metrics=metrics,
         )
     except Exception as exc:  # noqa: BLE001 — política deliberada
         logger.warning("metadata_extractor_failed", error=str(exc))

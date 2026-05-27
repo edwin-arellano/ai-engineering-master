@@ -14,6 +14,7 @@ import structlog
 
 from app.config import Settings, get_settings
 from app.core.llm_wrapper import LLMWrapper
+from app.core.metrics import TurnMetrics
 from app.prompts.loader import render_critic_prompt
 from app.schemas.actor_critic_boss import CriticFeedback
 from app.schemas.estimation import EstimationResult
@@ -35,6 +36,7 @@ class CriticService:
         transcript: str,
         project_metadata: ProjectMetadata,
         tier: UserTier,
+        metrics: TurnMetrics | None = None,
     ) -> CriticFeedback:
         """Audita la estimación. Devuelve CriticFeedback (nunca lanza)."""
         system_prompt, user_message = render_critic_prompt(
@@ -52,6 +54,7 @@ class CriticService:
                 max_tokens=2000,
                 temperature=0.0,
                 max_retries=2,
+                metrics=metrics,
             )
             logger.info(
                 "critic_review_completed",

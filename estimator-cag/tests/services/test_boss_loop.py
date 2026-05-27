@@ -96,7 +96,7 @@ def test_boss_synthesizes_when_actor_fails_after_first_iteration(
     boss = BossService(wrapper=wrapper, settings=get_settings())
     boss.critic.review = MagicMock(return_value=_blocking_feedback())
     monkeypatch.setattr(
-        boss, "_synthesize", lambda last, fb: _result(confidence=40)
+        boss, "_synthesize", lambda last, fb, metrics=None: _result(confidence=40)
     )
 
     call_count = {"n": 0}
@@ -131,7 +131,7 @@ def test_boss_synthesizes_when_never_converges(
     boss.critic.review = MagicMock(return_value=_blocking_feedback())
     # La síntesis devuelve un resultado con confianza reducida.
     monkeypatch.setattr(
-        boss, "_synthesize", lambda last, fb: _result(confidence=55)
+        boss, "_synthesize", lambda last, fb, metrics=None: _result(confidence=55)
     )
 
     run_actor = MagicMock(return_value=_result())

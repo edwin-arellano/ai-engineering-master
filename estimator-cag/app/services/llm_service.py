@@ -19,6 +19,7 @@ import structlog
 
 from app.config import Settings, get_settings
 from app.core.llm_wrapper import LLMWrapper
+from app.core.metrics import TurnMetrics
 from app.guardrails import validate_input
 from app.prompts.loader import render_estimation_prompt
 from app.schemas.actor_critic_boss import ActorCriticBossResult, CriticFeedback
@@ -47,6 +48,7 @@ def _run_actor(
     tier: UserTier,
     critic_feedback: CriticFeedback | None,
     settings: Settings,
+    metrics: TurnMetrics | None = None,
 ) -> EstimationResult:
     """Genera UN draft de estimación. Reutilizado en modo actor y en ACB.
 
@@ -73,6 +75,7 @@ def _run_actor(
         max_tokens=4000,
         temperature=0.3,
         max_retries=3,
+        metrics=metrics,
     )
 
 
