@@ -181,4 +181,7 @@ def get_session_debug(session_id: str) -> SessionDebugResponse:
         last_resolved_tier=session.last_resolved_tier,
         last_tier_rule=session.last_tier_rule,
         last_turn_observed=TurnObserved(**last) if last else None,
+        last_summary=session.history.running_summary,
+        anchored_facts=session.history.anchored_facts,
+        project_metadata=session.project_metadata.model_dump(),
     )

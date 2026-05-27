@@ -35,3 +35,9 @@ class SessionDebugResponse(BaseModel):
     last_resolved_tier: str | None
     last_tier_rule: str | None
     last_turn_observed: TurnObserved | None
+    # Estado de memoria persistente del CAG (lo que sobrevive entre turnos y se
+    # reinyecta al contexto). Lo consume `MemoryDriftMetric` del stress test sin
+    # transformación: las claves casan 1:1 con lo que la métrica busca.
+    last_summary: str | None
+    anchored_facts: list[str]
+    project_metadata: dict
