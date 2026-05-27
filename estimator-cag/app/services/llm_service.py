@@ -15,6 +15,8 @@ Orden estricto del turno (el orden importa):
 
 from __future__ import annotations
 
+import time
+
 import structlog
 
 from app.config import Settings, get_settings
@@ -92,6 +94,11 @@ def generate_estimation_in_session(
     settings: Settings | None = None,
 ) -> EstimationResponse:
     s = settings or get_settings()
+    # Wall-clock del turno completo (lo que percibe el cliente) y acumulador de
+    # métricas de todas las llamadas LLM del turno. El sink es opcional aguas
+    # abajo: si no se propagara, el comportamiento sería idéntico al histórico.
+    turn_started = time.perf_counter()
+    metrics = TurnMetrics()
 
     # 1. Guardrails de entrada.
     attachments_block = build_attachments_block(attachments)
@@ -118,6 +125,7 @@ def generate_estimation_in_session(
             attachments_text=attachments_block,
             tier=tier,
             run_actor=_run_actor,
+            metrics=metrics,
         )
         result = acb_result.final_result
     else:
@@ -132,6 +140,7 @@ def generate_estimation_in_session(
             tier=tier,
             critic_feedback=None,
             settings=s,
+            metrics=metrics,
         )
 
     # 6. Registrar el turno y comprimir el histórico.
@@ -147,8 +156,36 @@ def generate_estimation_in_session(
         transcript=transcript,
         assistant_response=result.model_dump_json(),
         current_metadata=session.project_metadata,
+        metrics=metrics,
     )
     session.project_metadata = session.project_metadata.apply_patch(patch)
+
+    # ---- Observabilidad del turno (Bloque 1) ----
+    # `latency_ms` es wall-clock del turno completo (lo que percibe el cliente),
+    # no la suma de latencias LLM (esa vive aparte en `metrics.llm_latency_ms`).
+    # `cost_usd`/`tokens_*` son el agregado de TODAS las llamadas del turno.
+    session.turn_count += 1
+    session.last_resolved_tier = tier.value
+    session.last_tier_rule = resolution.rule_name
+    wall_clock_ms = (time.perf_counter() - turn_started) * 1000
+
+    turn_observed = {
+        "turn_index": session.turn_count,
+        "session_id": session.session_id,
+        "enriched_transcript_chars": len(combined),
+        "attachments_total_chars": len(attachments_block),
+        "messages_in_window": len(session.history.messages),
+        "anchors_count": len(session.history.anchored_facts),
+        "summary_chars": len(session.history.running_summary or ""),
+        "tokens_in": metrics.tokens_in,
+        "tokens_out": metrics.tokens_out,
+        "cost_usd": round(metrics.cost_usd, 6),
+        "latency_ms": round(wall_clock_ms, 2),
+        "cache_hit_kind": "none",  # caché dormido en el flujo conversacional
+        "last_resolved_tier": tier.value,
+    }
+    session.last_turn_observed = turn_observed
+    logger.info("turn_observed", **turn_observed)
 
     # 8. Persistir y devolver.
     session_store.save(session)
