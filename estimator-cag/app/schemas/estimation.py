@@ -20,8 +20,12 @@ reintenta automáticamente mostrando el error al modelo (política
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    from app.schemas.actor_critic_boss import BossIteration
 
 
 # ---------------------------------------------------------------------------
@@ -144,9 +148,13 @@ class EstimationResult(BaseModel):
 
 
 class EstimationResponse(BaseModel):
-    """Envoltorio devuelto por el endpoint de sesiones tras una estimación.
+    """Respuesta del endpoint de sesiones.
 
-    ``cached`` y ``cache_level`` quedan inertes en pre-S05 (siempre ``False`` y
+    En modo actor, los campos `acb_*` son None. En modo actor_critic_boss,
+    informan de la convergencia y las iteraciones para que el cliente las
+    muestre.
+
+    ``cached`` y ``cache_level`` quedan inertes en S05 (siempre ``False`` y
     ``None``) porque el flujo conversacional no invoca el cache. Se conservan
     en el shape para no romper consumidores ni cerrar la puerta a reactivar el
     cache en sesiones futuras.
@@ -159,3 +167,8 @@ class EstimationResponse(BaseModel):
         default=None,
         description="Origen de la cache: None | 'exact_match' | 'semantic'.",
     )
+    tier: str | None = None
+    estimation_mode: str | None = None
+    acb_converged: bool | None = None
+    acb_total_iterations: int | None = None
+    acb_iterations: list["BossIteration"] | None = None

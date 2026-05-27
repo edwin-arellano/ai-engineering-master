@@ -1,0 +1,20 @@
+<transcript>
+{{ transcript }}
+</transcript>
+
+{% if project_metadata and not project_metadata.is_empty() %}
+<project_metadata>
+{% if project_metadata.project_name %}- project_name: {{ project_metadata.project_name }}{% endif %}
+{% if project_metadata.assumed_team_size is not none %}- assumed_team_size: {{ project_metadata.assumed_team_size }}{% endif %}
+{% if project_metadata.mentioned_technologies %}- mentioned_technologies: {{ project_metadata.mentioned_technologies | join(', ') }}{% endif %}
+{% if project_metadata.agreed_scope %}- agreed_scope: {{ project_metadata.agreed_scope }}{% endif %}
+</project_metadata>
+{% endif %}
+
+<target_tier>{{ tier }}</target_tier>
+
+<estimation_under_review>
+{{ estimation_json }}
+</estimation_under_review>
+
+Audit this estimation and return structured CriticFeedback. Be specific in the field_path.

@@ -1,0 +1,186 @@
+[
+  {
+    "id": "crm_b2b_nimbus",
+    "transcript": "We need a B2B CRM called Nimbus for our sales team: contact management, deal pipeline, basic reporting. Stack is React and Postgres, team of 3.",
+    "project_type": "web_saas",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "project_name_contains": "Nimbus",
+      "technologies_any_of": ["React", "Postgres", "PostgreSQL"],
+      "phase_count_range": [3, 6],
+      "cost_range_eur": [15000, 80000]
+    }
+  },
+  {
+    "id": "landing_page_small",
+    "transcript": "Build a simple landing page with a contact form. Single page, no backend beyond form handling.",
+    "project_type": "web_saas",
+    "detail_level": "summary",
+    "output_format": "narrative",
+    "expected": {
+      "out_of_scope": false,
+      "phase_count_range": [1, 3],
+      "cost_range_eur": [2000, 15000]
+    }
+  },
+  {
+    "id": "admin_dashboard_auth_reporting",
+    "transcript": "Necesitamos un admin dashboard para nuestro back-office: login SSO con Okta, gestión de usuarios, panel de reportes mensuales y exportación a CSV. Stack: Next.js + Node + PostgreSQL. Equipo de 2 ingenieros.",
+    "project_type": "internal_tool",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Next.js", "Node", "PostgreSQL", "Postgres", "Okta"],
+      "phase_count_range": [3, 6],
+      "cost_range_eur": [20000, 90000]
+    }
+  },
+  {
+    "id": "marketplace_payments_async",
+    "transcript": "Build a multi-vendor marketplace with 3 payment integrations (Stripe, Adyen and PayPal), an async order processing queue, vendor onboarding flow and KYC checks. Estimated 2-3 engineers for 4-6 months.",
+    "project_type": "web_saas",
+    "detail_level": "detailed",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Stripe", "Adyen", "PayPal"],
+      "phase_count_range": [4, 8],
+      "cost_range_eur": [80000, 350000]
+    }
+  },
+  {
+    "id": "ios_android_delivery_app",
+    "transcript": "Quiero una app móvil iOS y Android para gestión de pedidos de un restaurante: carta, carrito, pago con tarjeta, push notifications, login con email. React Native preferido. Equipo pequeño de 2.",
+    "project_type": "mobile_app",
+    "detail_level": "detailed",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["React Native", "Swift", "Kotlin"],
+      "phase_count_range": [3, 7],
+      "cost_range_eur": [30000, 150000]
+    }
+  },
+  {
+    "id": "salesforce_to_internal_integration",
+    "transcript": "We need an integration between Salesforce and our internal ERP: bi-directional sync of contacts and orders, webhook-driven, with idempotency and retries. Python + FastAPI on our side.",
+    "project_type": "integration",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Salesforce", "Python", "FastAPI"],
+      "phase_count_range": [2, 5],
+      "cost_range_eur": [15000, 80000]
+    }
+  },
+  {
+    "id": "internal_tool_pto_tracking",
+    "transcript": "Herramienta interna de RRHH para tracking de vacaciones y bajas médicas: solicitud, aprobación por manager, calendario por equipo, integración con Google Calendar. Equipo de 1 ingeniero.",
+    "project_type": "internal_tool",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "phase_count_range": [3, 6],
+      "cost_range_eur": [10000, 60000]
+    }
+  },
+  {
+    "id": "multilingual_saas_spanish",
+    "transcript": "Plataforma SaaS multi-tenant para gestoría fiscal: facturación electrónica, declaración trimestral, conexión con la AEAT, soporte para varios autónomos por cuenta. Stack Laravel + Vue + MySQL. Equipo de 3.",
+    "project_type": "web_saas",
+    "detail_level": "detailed",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Laravel", "Vue", "MySQL"],
+      "phase_count_range": [4, 7],
+      "cost_range_eur": [40000, 180000]
+    }
+  },
+  {
+    "id": "contradictions_in_brief",
+    "transcript": "Queremos una app móvil para 5 millones de usuarios, lista en 4 semanas, con un equipo de 1 desarrollador junior y presupuesto de 5000 EUR.",
+    "project_type": "mobile_app",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "phase_count_range": [1, 5]
+    }
+  },
+  {
+    "id": "data_pipeline_etl",
+    "transcript": "Pipeline ETL diario que ingiere ventas de 4 fuentes (PostgreSQL, MySQL, CSVs de S3 y un API REST) y consolida en un data warehouse en BigQuery. Airflow para orquestar. Equipo de 1 data engineer.",
+    "project_type": "integration",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Airflow", "BigQuery", "PostgreSQL", "MySQL"],
+      "phase_count_range": [2, 5],
+      "cost_range_eur": [15000, 70000]
+    }
+  },
+  {
+    "id": "telemedicine_mvp_hipaa",
+    "transcript": "MVP de telemedicina para 1 clínica piloto: video llamadas, citas online, historial básico, cumplimiento HIPAA. Stack: Next.js + Postgres + Twilio Video. 2 ingenieros, 3 meses.",
+    "project_type": "web_saas",
+    "detail_level": "detailed",
+    "output_format": "phases_table",
+    "expected": {
+      "out_of_scope": false,
+      "technologies_any_of": ["Twilio", "Next.js", "Postgres", "PostgreSQL"],
+      "phase_count_range": [3, 7],
+      "cost_range_eur": [60000, 220000]
+    }
+  },
+  {
+    "id": "bug_fix_only_request",
+    "transcript": "Tenemos una aplicación en producción que da timeouts esporádicos en el checkout. Queremos investigar y arreglar el problema.",
+    "project_type": "other",
+    "detail_level": "summary",
+    "output_format": "narrative",
+    "expected": {
+      "out_of_scope": false,
+      "phase_count_range": [1, 3],
+      "cost_range_eur": [1000, 25000]
+    }
+  },
+  {
+    "id": "bathroom_remodel_out_of_scope",
+    "transcript": "Quiero reformar el baño de casa, cambiar azulejos y poner mampara nueva.",
+    "project_type": "other",
+    "detail_level": "summary",
+    "output_format": "narrative",
+    "expected": { "out_of_scope": true }
+  },
+  {
+    "id": "marketing_campaign_out_of_scope",
+    "transcript": "Necesito ayuda para planificar una campaña de marketing en LinkedIn y Google Ads con un presupuesto de 20k para Q3.",
+    "project_type": "other",
+    "detail_level": "summary",
+    "output_format": "narrative",
+    "expected": { "out_of_scope": true }
+  },
+  {
+    "id": "vague_request",
+    "transcript": "Necesito una app. No sé muy bien qué, algo para mi negocio.",
+    "project_type": "other",
+    "detail_level": "medium",
+    "output_format": "phases_table",
+    "expected": { "out_of_scope": true }
+  },
+  {
+    "id": "vague_just_words",
+    "transcript": "Algo de IA, ya veremos qué. Algo guay y moderno.",
+    "project_type": "other",
+    "detail_level": "summary",
+    "output_format": "narrative",
+    "expected": { "out_of_scope": true }
+  }
+]

@@ -1,0 +1,18 @@
+{% if previous_summary %}
+<previous_summary>
+{{ previous_summary }}
+</previous_summary>
+{% endif %}
+
+{% if anchored_facts %}
+<anchored_facts>
+{% for fact in anchored_facts %}- {{ fact }}
+{% endfor %}
+</anchored_facts>
+{% endif %}
+
+<turns_to_compress>
+{{ transcript_block }}
+</turns_to_compress>
+
+Return the JSON object with the cumulative summary now.

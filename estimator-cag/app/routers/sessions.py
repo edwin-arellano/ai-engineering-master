@@ -31,7 +31,12 @@ from app.schemas.estimation import (
     OutputFormat,
     ProjectType,
 )
-from app.schemas.session import Session, SessionCreateResponse
+from app.schemas.session import (
+    EstimationMode,
+    Session,
+    SessionCreateRequest,
+    SessionCreateResponse,
+)
 from app.services.attachments import (
     AttachmentTooLargeError,
     ExtractedAttachment,
@@ -61,13 +66,21 @@ def _get_wrapper() -> LLMWrapper:
     response_model=SessionCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_session() -> SessionCreateResponse:
-    """Crea una sesión vacía y devuelve su identificador."""
+def create_session(
+    body: SessionCreateRequest | None = None,
+) -> SessionCreateResponse:
+    """Crea una sesión con el modo de estimación indicado (default ``actor``)."""
     store = get_session_store()
-    session = store.create()
+    mode = body.estimation_mode if body else EstimationMode.ACTOR
+    session = Session(estimation_mode=mode)
+    # `save` actúa como upsert y refresca TTL idle; cubre el alta y la persistencia
+    # del modo sin tocar la firma de `SessionStore.create()`.
+    store.save(session)
+    logger.info("session_created", session_id=session.session_id, mode=mode.value)
     return SessionCreateResponse(
         session_id=session.session_id,
         created_at=session.created_at,
+        estimation_mode=session.estimation_mode,
     )
 
 

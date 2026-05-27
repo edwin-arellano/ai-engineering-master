@@ -75,6 +75,40 @@ class Settings(BaseSettings):
         description="Tamaño máximo aceptado por adjunto (bytes).",
     )
 
+    # ---- Tiers (nuevo en S05) ----
+    default_tier: str = Field(default="developer", alias="DEFAULT_TIER")
+
+    # ---- Compresión de historial (nuevo en S05) ----
+    compression_policy: str = Field(
+        default="anchor_hybrid",
+        alias="COMPRESSION_POLICY",
+        description="anchor_hybrid | sliding_window | cumulative",
+    )
+    compression_trigger_turns: int = Field(
+        default=6,
+        alias="COMPRESSION_TRIGGER_TURNS",
+        description="Número de pares user+assistant a partir del cual se comprime.",
+    )
+    compression_keep_recent_turns: int = Field(
+        default=3,
+        alias="COMPRESSION_KEEP_RECENT_TURNS",
+        description="Pares recientes que se mantienen sin comprimir tras una compresión.",
+    )
+
+    # ---- Actor-Critic-Boss (nuevo en S05) ----
+    acb_max_iterations: int = Field(
+        default=3,
+        alias="ACB_MAX_ITERATIONS",
+        description="Presupuesto máximo de iteraciones del boss.",
+    )
+
+    # ---- Versiones de prompt auxiliares (nuevo en S05) ----
+    critic_prompt_version: str = Field(default="v1", alias="CRITIC_PROMPT_VERSION")
+    boss_prompt_version: str = Field(default="v1", alias="BOSS_PROMPT_VERSION")
+    summarizer_prompt_version: str = Field(
+        default="v1", alias="SUMMARIZER_PROMPT_VERSION"
+    )
+
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"
     environment: str = "development"

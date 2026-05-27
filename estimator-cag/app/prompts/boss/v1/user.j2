@@ -1,0 +1,12 @@
+<last_draft>
+{{ draft_json }}
+</last_draft>
+
+<outstanding_issues>
+{% for issue in issues -%}
+- [{{ issue.severity }}] {{ issue.field_path }}: {{ issue.description }}
+  Suggested fix: {{ issue.suggested_fix }}
+{% endfor %}
+</outstanding_issues>
+
+Synthesize the final EstimationResult now. Lower confidence to reflect unresolved issues.
