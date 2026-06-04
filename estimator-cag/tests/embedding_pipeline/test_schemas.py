@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.embedding_pipeline.schemas import Budget, Chunk, EmbeddedChunk
+from app.generation.rag.schemas import Budget, Chunk, EmbeddedChunk
 
 ROOT = Path(__file__).resolve().parents[2]
 

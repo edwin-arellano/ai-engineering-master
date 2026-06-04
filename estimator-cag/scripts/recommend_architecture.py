@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import get_settings
+from app.foundations.config import get_settings
 from app.ingest.architecture import (
     CorpusProfile,
     IngestionArchitecture,

@@ -16,12 +16,12 @@ import json
 
 from pydantic import BaseModel, Field
 
-from app.config import Settings
-from app.core.llm_wrapper import LLMWrapper
-from app.core.metrics import TurnMetrics
+from app.foundations.config import Settings
+from app.foundations.llm_wrapper import LLMWrapper
+from app.foundations.metrics import TurnMetrics
 from app.ingest.catalog.inspect import FilesystemSourceFacts
 from app.ingest.catalog.models import IngestionDecision, Quality, Sensitivity
-from app.prompts.loader import render_catalog_evaluator_prompt
+from app.foundations.prompts.loader import render_catalog_evaluator_prompt
 
 
 class CatalogSourceJudgment(BaseModel):

@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.config import get_settings
-from app.core.llm_wrapper import LLMWrapper
+from app.foundations.config import get_settings
+from app.foundations.llm_wrapper import LLMWrapper
 from app.ingest.catalog.evaluator import evaluate_source
 from app.ingest.catalog.inspect import FilesystemSourceFacts
 from app.ingest.catalog.models import IngestionDecision

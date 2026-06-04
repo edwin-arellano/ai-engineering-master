@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from app.services.sessions.session_store import (
+from app.generation.cag.sessions.session_store import (
     SessionNotFoundError,
     SessionStore,
 )
@@ -79,7 +79,7 @@ def test_history_sliding_window() -> None:
 
 def test_apply_patch_preserves_existing_facts() -> None:
     """apply_patch nunca borra hechos con nulos del patch."""
-    from app.schemas.session import ProjectMetadata, ProjectMetadataUpdate
+    from app.domain.session import ProjectMetadata, ProjectMetadataUpdate
 
     initial = ProjectMetadata(
         project_name="BookFlow",

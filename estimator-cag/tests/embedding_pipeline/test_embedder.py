@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.embedding_pipeline.embedder import LiteLLMEmbedder
-from app.embedding_pipeline.schemas import Chunk
+from app.generation.rag.embedding.embedder import LiteLLMEmbedder
+from app.generation.rag.schemas import Chunk
 
 
 @pytest.mark.integration

@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from app.config import get_settings
+from app.foundations.config import get_settings
 from app.ingest.cleaning.budgets import clean_budget_records
 from app.ingest.cleaning.policy import validate_with_policy
 from app.ingest.cleaning.schemas import BudgetRecord

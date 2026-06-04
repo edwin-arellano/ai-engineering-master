@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.schemas.estimation import EstimationResult, Phase
+from app.domain.estimation import EstimationResult, Phase
 
 
 def _phase(**kwargs) -> Phase:

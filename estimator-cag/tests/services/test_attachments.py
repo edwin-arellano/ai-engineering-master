@@ -10,7 +10,7 @@ from fastapi import UploadFile
 from pypdf import PdfWriter
 from starlette.datastructures import Headers
 
-from app.services.attachments import (
+from app.generation.cag.attachments import (
     DOCX_MIME,
     PDF_MIME,
     AttachmentTooLargeError,
@@ -86,7 +86,7 @@ def test_build_attachments_block_empty() -> None:
 
 
 def test_build_attachments_block_concatenates_with_delimiters() -> None:
-    from app.services.attachments import ExtractedAttachment
+    from app.generation.cag.attachments import ExtractedAttachment
 
     a = ExtractedAttachment("spec.pdf", PDF_MIME, "Page 1 text", 123)
     b = ExtractedAttachment("notes.docx", DOCX_MIME, "Paragraph text", 456)

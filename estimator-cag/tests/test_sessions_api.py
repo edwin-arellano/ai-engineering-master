@@ -19,7 +19,7 @@ from docx import Document as DocxDocument
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.services.sessions import get_session_store
+from app.generation.cag.sessions import get_session_store
 
 
 def _make_docx_bytes(paragraphs: list[str]) -> bytes:

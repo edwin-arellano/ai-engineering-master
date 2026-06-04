@@ -23,7 +23,7 @@ from pathlib import Path
 
 import yaml
 
-from app.config import get_settings
+from app.foundations.config import get_settings
 from app.ingest.catalog.inspect import inspect_filesystem_source
 from app.ingest.catalog.models import (
     CatalogSource,
@@ -161,7 +161,7 @@ def main() -> None:
     settings = get_settings()
     wrapper = None
     if use_llm:
-        from app.core.llm_wrapper import LLMWrapper
+        from app.foundations.llm_wrapper import LLMWrapper
 
         wrapper = LLMWrapper(settings)
 

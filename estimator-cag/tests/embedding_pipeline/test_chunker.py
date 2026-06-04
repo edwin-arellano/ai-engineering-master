@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.embedding_pipeline.chunker import JSONStructuralChunker
-from app.embedding_pipeline.schemas import Budget, BudgetComponent, ClientMetadata
+from app.generation.rag.chunking.strategies.structural import JSONStructuralChunker
+from app.generation.rag.schemas import Budget, BudgetComponent, ClientMetadata
 
 
 def _budget() -> Budget:
