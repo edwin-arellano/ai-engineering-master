@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 
 from app.core.logging_config import configure_logging, request_id_middleware
-from app.routers import sessions
+from app.routers import ingestion, sessions
 
 # IMPORTANTE: configurar logging ANTES de instanciar FastAPI para que los logs
 # del arranque también queden estructurados.
@@ -15,15 +15,17 @@ app = FastAPI(
         "Servicio de estimación de software conversacional. Sesiones con "
         "memoria persistente (project_metadata), historial con ventana "
         "deslizante, adjuntos PDF/.docx con extracción local, structured "
-        "outputs con Instructor y cinco capas de guardrails."
+        "outputs con Instructor y cinco capas de guardrails. Incluye un "
+        "subsistema de ingesta de datos aislado (S06)."
     ),
-    version="0.5.0",
+    version="0.6.0",
 )
 
 # Middleware de request_id (debe ir antes de incluir routers)
 app.middleware("http")(request_id_middleware)
 
 app.include_router(sessions.router)
+app.include_router(ingestion.router)
 
 
 @app.get("/health", tags=["meta"])
