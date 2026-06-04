@@ -1,8 +1,8 @@
-"""JSONStructuralChunker: un componente = un chunk, headers contextuales, metadata."""
+"""StructuralChunker: un componente = un chunk, headers contextuales, metadata."""
 
 from __future__ import annotations
 
-from app.generation.rag.chunking.strategies.structural import JSONStructuralChunker
+from app.generation.rag.chunking.strategies.structural import StructuralChunker
 from app.generation.rag.schemas import Budget, BudgetComponent, ClientMetadata
 
 
@@ -36,25 +36,26 @@ def _budget() -> Budget:
 
 
 def test_one_chunk_per_component():
-    chunks = JSONStructuralChunker().chunk([_budget()])
+    chunks = StructuralChunker().chunk([_budget()])
     assert len(chunks) == 2
 
 
 def test_chunk_id_format():
-    chunks = JSONStructuralChunker().chunk([_budget()])
+    chunks = StructuralChunker().chunk([_budget()])
     assert chunks[0].chunk_id == "BUD-2024-001::AUTH-001"
     assert chunks[1].chunk_id == "BUD-2024-001::TXN-002"
 
 
 def test_text_contains_contextual_headers():
-    chunk = JSONStructuralChunker().chunk([_budget()])[0]
+    chunk = StructuralChunker().chunk([_budget()])[0]
     assert "[Client sector: finance" in chunk.text
     assert "Main tech: ruby_on_rails" in chunk.text
     assert "Component: OAuth backend" in chunk.text
 
 
 def test_metadata_has_seven_filterable_keys_and_not_in_text():
-    chunk = JSONStructuralChunker().chunk([_budget()])[0]
+    chunk = StructuralChunker().chunk([_budget()])[0]
+    # 7 campos filtrables del componente + la etiqueta de estrategia (S07).
     assert set(chunk.metadata.keys()) == {
         "budget_id",
         "component_id",
@@ -63,6 +64,7 @@ def test_metadata_has_seven_filterable_keys_and_not_in_text():
         "year",
         "complexity",
         "estimated_hours",
+        "strategy",
     }
     # la metadata filtrable no se embebe (no aparece como claves en el texto)
     assert "client_sector" not in chunk.text
@@ -70,7 +72,7 @@ def test_metadata_has_seven_filterable_keys_and_not_in_text():
 
 
 def test_token_count_positive_and_deterministic():
-    chunks_a = JSONStructuralChunker().chunk([_budget()])
-    chunks_b = JSONStructuralChunker().chunk([_budget()])
+    chunks_a = StructuralChunker().chunk([_budget()])
+    chunks_b = StructuralChunker().chunk([_budget()])
     assert chunks_a[0].token_count > 0
     assert chunks_a[0].token_count == chunks_b[0].token_count

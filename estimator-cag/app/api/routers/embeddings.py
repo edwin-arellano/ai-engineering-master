@@ -8,7 +8,7 @@ from __future__ import annotations
 import structlog
 from fastapi import APIRouter, HTTPException
 
-from app.generation.rag.chunking.strategies.structural import JSONStructuralChunker
+from app.generation.rag.chunking.strategies.structural import StructuralChunker
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from app.generation.rag.schemas import IngestRequest, IngestResponse, IngestStats
 
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
 @router.post("/ingest", response_model=IngestResponse)
 def ingest(request: IngestRequest) -> IngestResponse:
-    chunker = JSONStructuralChunker()
+    chunker = StructuralChunker()
     embedder = LiteLLMEmbedder()  # instancia por request → stats aisladas
     try:
         chunks = chunker.chunk(request.budgets)

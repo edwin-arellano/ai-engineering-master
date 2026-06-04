@@ -7,13 +7,11 @@ La metadata filtrable va FUERA del texto embebido.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from typing import Any
-
 import structlog
-import tiktoken
 
-from app.generation.rag.schemas import Budget, BudgetComponent, Chunk
+from app.generation.rag.chunking import common
+from app.generation.rag.chunking.base import Chunker
+from app.generation.rag.schemas import Budget, Chunk
 
 logger = structlog.get_logger(__name__)
 
@@ -22,93 +20,31 @@ logger = structlog.get_logger(__name__)
 LONG_CHUNK_WARN_TOKENS = 512
 
 
-def _get_tokenizer(model: str) -> "tiktoken.Encoding":
-    try:
-        return tiktoken.encoding_for_model(model)
-    except KeyError:
-        # los modelos de embeddings de OpenAI usan cl100k_base
-        return tiktoken.get_encoding("cl100k_base")
+class StructuralChunker(Chunker):
+    """Un componente del presupuesto = un chunk (con contextual headers)."""
 
-
-class Chunker(ABC):
-    """Interfaz común para cualquier estrategia de chunking del pipeline.
-
-    El ejercicio pre-sesión implementa JSONStructuralChunker; el
-    TopicSegmentationChunker (transcripciones) y otros entran en el directo
-    sobre esta misma base.
-    """
-
-    @abstractmethod
-    def chunk(self, budgets: list[Budget]) -> list[Chunk]: ...
-
-
-class JSONStructuralChunker(Chunker):
-    def __init__(self, model_for_token_count: str = "text-embedding-3-small") -> None:
-        self._tokenizer = _get_tokenizer(model_for_token_count)
+    name = "structural"
 
     def chunk(self, budgets: list[Budget]) -> list[Chunk]:
         chunks: list[Chunk] = []
         for budget in budgets:
-            produced = self._chunk_one_budget(budget)
-            chunks.extend(produced)
-            logger.info(
-                "chunk.budget_done", budget_id=budget.budget_id, chunks=len(produced)
-            )
+            parent = common.build_parent_context(budget)
+            for c in budget.components:
+                text = common.render_component_text(c, parent)
+                tokens = common.count_tokens(text)
+                if tokens > LONG_CHUNK_WARN_TOKENS:
+                    logger.warning(
+                        "chunk.unusually_large",
+                        chunk_id=f"{budget.budget_id}::{c.component_id}",
+                        token_count=tokens,
+                    )
+                chunks.append(
+                    Chunk(
+                        chunk_id=f"{budget.budget_id}::{c.component_id}",
+                        text=text,
+                        metadata=common.build_metadata(c, budget, strategy=self.name),
+                        token_count=tokens,
+                        is_orphan=common.is_orphan(tokens),
+                    )
+                )
         return chunks
-
-    def _chunk_one_budget(self, budget: Budget) -> list[Chunk]:
-        parent_context = self._build_parent_context(budget)
-        return [
-            self._build_chunk(c, budget, parent_context) for c in budget.components
-        ]
-
-    def _build_parent_context(self, budget: Budget) -> str:
-        c = budget.client_metadata
-        return (
-            f"[Project: {budget.project_summary}]\n"
-            f"[Client sector: {c.sector} | Year: {budget.year} | "
-            f"Main tech: {budget.main_technology}]"
-        )
-
-    def _render_component_text(
-        self, component: BudgetComponent, parent_context: str
-    ) -> str:
-        return (
-            f"{parent_context}\n\n"
-            f"Component: {component.name}\n"
-            f"Description: {component.description}\n"
-            f"Tech stack: {', '.join(component.tech_stack)}\n"
-            f"Complexity: {component.complexity}\n"
-            f"Estimated hours: {component.estimated_hours}"
-        )
-
-    def _build_metadata(
-        self, component: BudgetComponent, budget: Budget
-    ) -> dict[str, Any]:
-        return {
-            "budget_id": budget.budget_id,
-            "component_id": component.component_id,
-            "client_sector": budget.client_metadata.sector,
-            "main_technology": budget.main_technology,
-            "year": budget.year,
-            "complexity": component.complexity,
-            "estimated_hours": component.estimated_hours,
-        }
-
-    def _build_chunk(
-        self, component: BudgetComponent, budget: Budget, parent_context: str
-    ) -> Chunk:
-        text = self._render_component_text(component, parent_context)
-        token_count = len(self._tokenizer.encode(text))
-        if token_count > LONG_CHUNK_WARN_TOKENS:
-            logger.warning(
-                "chunk.unusually_large",
-                chunk_id=f"{budget.budget_id}::{component.component_id}",
-                token_count=token_count,
-            )
-        return Chunk(
-            chunk_id=f"{budget.budget_id}::{component.component_id}",
-            text=text,
-            metadata=self._build_metadata(component, budget),
-            token_count=token_count,
-        )
