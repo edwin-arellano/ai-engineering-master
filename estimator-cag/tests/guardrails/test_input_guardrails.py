@@ -2,8 +2,8 @@
 
 import pytest
 
-from app.config import Settings
-from app.guardrails.input_guardrails import (
+from app.foundations.config import Settings
+from app.generation.cag.guardrails.input_guardrails import (
     InputGuardrailCategory,
     InputGuardrailError,
     validate_input,

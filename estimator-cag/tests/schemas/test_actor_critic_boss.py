@@ -1,6 +1,6 @@
 """Tests de los schemas del Actor-Critic-Boss."""
 
-from app.schemas.actor_critic_boss import (
+from app.domain.actor_critic_boss import (
     CriticFeedback,
     CriticIssue,
     CriticVerdict,

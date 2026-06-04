@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import get_settings
+from app.foundations.config import get_settings
 from app.ingest.catalog.loader import load_catalog
 from app.ingest.catalog.report import generate_audit_report
 from app.ingest.orchestrator import run_ingestion

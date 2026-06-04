@@ -1,7 +1,7 @@
 """Tests del template v2 del estimator."""
 
-from app.prompts.loader import render_estimation_prompt
-from app.schemas.estimation import (
+from app.foundations.prompts.loader import render_estimation_prompt
+from app.domain.estimation import (
     DetailLevel,
     OutputFormat,
     ProjectType,

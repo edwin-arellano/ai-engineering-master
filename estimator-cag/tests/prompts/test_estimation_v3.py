@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from app.prompts.loader import render_estimation_prompt
-from app.schemas.session import ProjectMetadata
+from app.foundations.prompts.loader import render_estimation_prompt
+from app.domain.session import ProjectMetadata
 
 
 def _kwargs(**overrides) -> dict:

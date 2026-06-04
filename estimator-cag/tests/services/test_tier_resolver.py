@@ -1,8 +1,8 @@
 """Tests del resolver de tier heurístico."""
 
-from app.schemas.session import ProjectMetadata
-from app.schemas.tier import UserTier
-from app.services.tiers.resolver import TierContext, TierResolver
+from app.domain.session import ProjectMetadata
+from app.domain.tier import UserTier
+from app.generation.cag.tiers.resolver import TierContext, TierResolver
 
 
 def _ctx(transcript: str) -> TierContext:

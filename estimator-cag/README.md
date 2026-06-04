@@ -1152,3 +1152,90 @@ uv run pytest tests/embedding_pipeline -m integration -q          # embedder rea
 El test de integración fija el comportamiento real de la versión instalada de
 LiteLLM (acceso a `response.data`, presencia de `usage`, clase de
 `RateLimitError`).
+
+---
+
+## Sesión 07 — Estrategias de chunking + refactor de arquitectura
+
+La rama `session-07` tiene dos bloques. **Bloque A** reorganiza todo `app/` en
+capas serias (refactor mecánico con `git mv`, historia preservada). **Bloque B**
+implementa una suite de **8 estrategias de chunking** sobre una interfaz
+`Chunker` común, con un comparador de métricas. Sin persistencia/pgvector,
+retrieval, queries híbridas ni Presidio: todo eso es **S08+**.
+
+### Bloque A — Nueva arquitectura por capas
+
+```
+app/
+├── main.py                  # entrypoint estable (uvicorn app.main:app)
+├── foundations/             # infra transversal: config, llm_wrapper, logging,
+│                            #   metrics, pricing, cache, prompts (loader + templates)
+├── domain/                  # schemas compartidos (estimation, session, tier, ...)
+├── api/routers/             # sessions, ingestion, embeddings
+├── ingest/                  # subsistema de ingesta S06 (capa de primer nivel)
+└── generation/
+    ├── cag/                 # flujo conversacional + guardrails + sessions + tiers
+    ├── agentic/             # boss + critic (Actor-Critic-Boss)
+    └── rag/                 # chunking + embedding (+ retrieval en S08)
+```
+
+El refactor es **puramente estructural**: solo cambian rutas de import (barrido
+mecánico), el comportamiento es idéntico. El loader de prompts sigue siendo el
+único punto que toca templates (su ruta base se auto-ajusta vía
+`Path(__file__).parent`). Va en un **commit aparte** del feature.
+
+### Bloque B — Las 8 estrategias de chunking
+
+Todas implementan la interfaz `Chunker` (`chunk(budgets) -> list[Chunk]`) y están
+en el registry (`build_chunker(name, embedder=..., wrapper=...)`):
+
+| Estrategia | Tipo | Cuándo usarla |
+|---|---|---|
+| `structural` | mecánica | **Default.** Un componente = un chunk, con contextual headers. La más coherente para este corpus JSON. |
+| `recursive` | mecánica | Corta por separadores naturales sin exceder `chunk_max_tokens`. La mejor mecánica para texto largo. |
+| `fixed_size` | mecánica | Trozos de tamaño fijo con overlap. Ruidosa: solo baseline ("la que nunca debéis usar"). |
+| `sentence_window` | mecánica | Ventanas de N oraciones. Alto recall pero genera muchos huérfanos. |
+| `hierarchical` | mecánica | Parent (presupuesto) + child (componente) con `parent_chunk_id`. "Contextual retrieval barato" sin LLM. |
+| `semantic` | embedder | Corta donde la similitud coseno entre oraciones cae bajo un umbral. Reutiliza `LiteLLMEmbedder`. |
+| `propositional` | LLM | Descompone cada componente en proposiciones atómicas. Precisa pero cara y propensa a huérfanos. |
+| `contextual_retrieval` | LLM | Antepone contexto del documento generado por LLM (técnica de Anthropic). La más efectiva en retrieval, la más cara. |
+
+**Huérfanos**: un chunk con `token_count < CHUNK_ORPHAN_MIN_TOKENS` se marca
+`is_orphan=True` y el endpoint **no lo vectoriza** (no mete ruido en la futura BD
+vectorial). El comparador los cuenta como señal de calidad.
+
+Las estrategias LLM (`propositional`, `contextual_retrieval`) y `semantic` son
+**opt-in** en las comparaciones (coste: LLM-por-chunk/componente).
+
+### Endpoint
+
+```bash
+uv run uvicorn app.main:app                          # versión 0.7.0
+# strategy opcional (default structural); inválida -> 422
+python3 -c "import json;print(json.dumps({'budgets':json.load(open('data/budgets_sample.json')),'strategy':'recursive'}))" > /tmp/b.json
+curl -s -X POST localhost:8000/embeddings/ingest -H "Content-Type: application/json" --data @/tmp/b.json
+```
+
+### Comparador y dimensiones
+
+```bash
+# compara estrategias (chunks, huérfanos, min/P50/P95/max tokens, latencia, coseno vs query)
+uv run python -m scripts.compare_strategies --query "OAuth 2.0 authentication backend for fintech"
+uv run python -m scripts.compare_strategies --strategies structural,contextual_retrieval --query "auth for fintech"
+# 1536 vs 768 dimensiones (Matryoshka de text-embedding-3-small vía dimensions=)
+uv run python -m scripts.compare_embeddings
+```
+
+`compare_embeddings` replica el hallazgo del directo: 768 dimensiones embeben
+**más rápido** (~0.6× la latencia) con una **diferencia de coseno mínima**
+(~0.013 entre pares), así que recortar dimensiones apenas degrada la señal.
+
+### Tests
+
+```bash
+uv run pytest tests/generation/rag -m "not integration" -q   # estrategias mecánicas + comparador
+uv run pytest tests/generation/rag -m integration -q          # semantic + propositional + contextual (API)
+```
+
+> **S08+**: persistencia en PostgreSQL + pgvector, retrieval / búsqueda semántica,
+> queries híbridas SQL+semántica, y anonimización PII con Presidio.

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.embedding_pipeline.embedder import LiteLLMEmbedder
+from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from scripts.compare import cosine_similarity
 
 ROOT = Path(__file__).resolve().parents[1]

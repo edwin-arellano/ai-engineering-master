@@ -4,18 +4,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.config import get_settings
-from app.schemas.actor_critic_boss import (
+from app.foundations.config import get_settings
+from app.domain.actor_critic_boss import (
     CriticFeedback,
     CriticIssue,
     CriticVerdict,
     IssueCategory,
     IssueSeverity,
 )
-from app.schemas.estimation import EstimationResult, Phase
-from app.schemas.session import EstimationMode, Session
-from app.schemas.tier import UserTier
-from app.services.actor_critic_boss.boss import BossService
+from app.domain.estimation import EstimationResult, Phase
+from app.domain.session import EstimationMode, Session
+from app.domain.tier import UserTier
+from app.generation.agentic.boss import BossService
 
 
 def _result(confidence: int = 80) -> EstimationResult:

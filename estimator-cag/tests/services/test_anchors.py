@@ -1,7 +1,7 @@
 """Tests del detector de anclas heurístico."""
 
-from app.schemas.session import ChatMessage
-from app.services.sessions.compression.anchors import detect_anchors
+from app.domain.session import ChatMessage
+from app.generation.cag.sessions.compression.anchors import detect_anchors
 
 
 def _user(content: str) -> ChatMessage:

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.prompts.loader import render_estimation_prompt
-from app.schemas.estimation import (
+from app.foundations.prompts.loader import render_estimation_prompt
+from app.domain.estimation import (
     DetailLevel,
     OutputFormat,
     ProjectType,
@@ -115,7 +115,7 @@ def test_strict_undefined_raises_on_missing_variable():
     """
     from jinja2 import UndefinedError
 
-    from app.prompts.loader import _env
+    from app.foundations.prompts.loader import _env
 
     template = _env.from_string("Hello {{ missing_variable }}")
     with pytest.raises(UndefinedError):

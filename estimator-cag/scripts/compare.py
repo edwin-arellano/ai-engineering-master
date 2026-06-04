@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import math
 
-from app.embedding_pipeline.embedder import LiteLLMEmbedder
+from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:

@@ -1,12 +1,12 @@
 """Tests de los output guardrails (filtro de cache)."""
 
-from app.config import Settings
-from app.guardrails.output_guardrails import (
+from app.foundations.config import Settings
+from app.generation.cag.guardrails.output_guardrails import (
     is_low_confidence,
     is_out_of_scope,
     should_cache_result,
 )
-from app.schemas.estimation import EstimationResult, Phase
+from app.domain.estimation import EstimationResult, Phase
 
 
 def _result(**overrides) -> EstimationResult:

@@ -16,11 +16,11 @@ import argparse
 import json
 from pathlib import Path
 
-from app.config import get_settings
-from app.core.llm_wrapper import LLMWrapper
-from app.schemas.session import EstimationMode, Session
-from app.services.llm_service import generate_estimation_in_session
-from app.services.sessions import get_session_store
+from app.foundations.config import get_settings
+from app.foundations.llm_wrapper import LLMWrapper
+from app.domain.session import EstimationMode, Session
+from app.generation.cag.llm_service import generate_estimation_in_session
+from app.generation.cag.sessions import get_session_store
 from evals.metrics import (
     ContentRecallMetric,
     CostBoundsMetric,
