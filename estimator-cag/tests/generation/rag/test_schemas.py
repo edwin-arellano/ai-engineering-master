@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from app.generation.rag.schemas import Budget, Chunk, EmbeddedChunk
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_sample_parses_with_budget_schema():
