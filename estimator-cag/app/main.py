@@ -3,6 +3,7 @@
 from fastapi import FastAPI
 
 from app.core.logging_config import configure_logging, request_id_middleware
+from app.embedding_pipeline.router import router as embeddings_router
 from app.routers import ingestion, sessions
 
 # IMPORTANTE: configurar logging ANTES de instanciar FastAPI para que los logs
@@ -16,9 +17,10 @@ app = FastAPI(
         "memoria persistente (project_metadata), historial con ventana "
         "deslizante, adjuntos PDF/.docx con extracción local, structured "
         "outputs con Instructor y cinco capas de guardrails. Incluye un "
-        "subsistema de ingesta de datos aislado (S06)."
+        "subsistema de ingesta de datos aislado (S06) y un pipeline de "
+        "embeddings y chunking aislado (S07)."
     ),
-    version="0.6.0",
+    version="0.7.0",
 )
 
 # Middleware de request_id (debe ir antes de incluir routers)
@@ -26,6 +28,7 @@ app.middleware("http")(request_id_middleware)
 
 app.include_router(sessions.router)
 app.include_router(ingestion.router)
+app.include_router(embeddings_router)  # prefix /embeddings vive en el router
 
 
 @app.get("/health", tags=["meta"])
