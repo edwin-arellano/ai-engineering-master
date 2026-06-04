@@ -144,6 +144,18 @@ def render_boss_prompt(
     )
 
 
+def render_catalog_evaluator_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del evaluador de fuentes del catálogo (S06).
+
+    A diferencia de las demás familias, el evaluador solo necesita el system
+    prompt: el user message es el JSON de hechos factuales que arma el propio
+    evaluador (ver ``app.ingest.catalog.evaluator``). No recibe contexto extra,
+    de ahí que no haya plantilla ``user.j2`` para esta familia.
+    """
+    system_template = _env.get_template(f"catalog_evaluator/{version}/system.j2")
+    return system_template.render()
+
+
 def render_summarizer_prompt(
     *,
     transcript_block: str,
