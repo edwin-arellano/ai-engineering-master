@@ -53,6 +53,9 @@ class Chunk(BaseModel):
     text: str
     metadata: dict[str, Any]
     token_count: int
+    # huérfano: chunk demasiado pequeño (< CHUNK_ORPHAN_MIN_TOKENS). No se
+    # vectoriza (no mete ruido en la futura BD vectorial); el comparador lo cuenta.
+    is_orphan: bool = False
 
 
 class EmbeddedChunk(Chunk):
