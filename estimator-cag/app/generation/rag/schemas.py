@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Sector = Literal["finance", "ecommerce", "healthcare", "industrial", "other"]
 Complexity = Literal["low", "medium", "high"]
@@ -64,6 +64,20 @@ class EmbeddedChunk(Chunk):
 
 class IngestRequest(BaseModel):
     budgets: list[Budget]
+    # estrategia de chunking; default structural. Se valida contra el registry
+    # (import lazy para evitar el ciclo schemas <- strategies <- registry).
+    strategy: str = "structural"
+
+    @field_validator("strategy")
+    @classmethod
+    def _known_strategy(cls, value: str) -> str:
+        from app.generation.rag.chunking.registry import ALL_STRATEGY_NAMES
+
+        if value not in ALL_STRATEGY_NAMES:
+            raise ValueError(
+                f"Estrategia desconocida '{value}'. Válidas: {ALL_STRATEGY_NAMES}"
+            )
+        return value
 
 
 class IngestStats(BaseModel):
