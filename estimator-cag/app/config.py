@@ -109,6 +109,22 @@ class Settings(BaseSettings):
         default="v1", alias="SUMMARIZER_PROMPT_VERSION"
     )
 
+    # ---- Ingesta (S06) ----
+    ingest_seed_dir: str = Field("data/seed", alias="INGEST_SEED_DIR")
+    data_catalog_path: str = Field(
+        "data/catalog/data_catalog.yaml", alias="DATA_CATALOG_PATH"
+    )
+    catalog_evaluator_prompt_version: str = Field(
+        "v1", alias="CATALOG_EVALUATOR_PROMPT_VERSION"
+    )
+
+    # ---- Viabilidad arquitectónica CAG (S06) — umbrales del marco de decisión ----
+    cag_usable_context_ratio: float = Field(0.7, alias="CAG_USABLE_CONTEXT_RATIO")
+    cag_latency_sla_seconds: float = Field(4.0, alias="CAG_LATENCY_SLA_SECONDS")
+    cag_cost_per_turn_budget_usd: float = Field(
+        0.05, alias="CAG_COST_PER_TURN_BUDGET_USD"
+    )
+
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"
     environment: str = "development"
