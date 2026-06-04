@@ -156,6 +156,26 @@ def render_catalog_evaluator_prompt(version: str = "v1") -> str:
     return system_template.render()
 
 
+def render_propositional_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del chunker propositional (S07).
+
+    Solo system: el user message es el texto del componente a descomponer en
+    proposiciones (ver ``app.generation.rag.chunking.strategies.propositional``).
+    """
+    system_template = _env.get_template(f"propositional/{version}/system.j2")
+    return system_template.render()
+
+
+def render_contextual_retrieval_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del chunker contextual_retrieval (S07).
+
+    Solo system: el user message lleva el documento completo y el chunk (ver
+    ``app.generation.rag.chunking.strategies.contextual_retrieval``).
+    """
+    system_template = _env.get_template(f"contextual_retrieval/{version}/system.j2")
+    return system_template.render()
+
+
 def render_summarizer_prompt(
     *,
     transcript_block: str,
