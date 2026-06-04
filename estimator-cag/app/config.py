@@ -40,6 +40,8 @@ class Settings(BaseSettings):
         default="text-embedding-3-small", alias="EMBEDDINGS_MODEL"
     )
     embeddings_dimensions: int = Field(default=1536, alias="EMBEDDINGS_DIMENSIONS")
+    # Tamaño de batch del pipeline de embeddings (S07).
+    embedding_batch_size: int = Field(default=100, alias="EMBEDDING_BATCH_SIZE")
     semantic_cache_enabled: bool = Field(default=True, alias="SEMANTIC_CACHE_ENABLED")
     semantic_cache_threshold: float = Field(
         default=0.92, alias="SEMANTIC_CACHE_THRESHOLD"
