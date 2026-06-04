@@ -1,0 +1,101 @@
+# Catálogo de fuentes de datos (S06). CÓDIGO revisado a mano.
+# Generado por scripts/inspect_sources.py; editar con criterio.
+version: 1
+last_audited: '2026-06-04'
+sources:
+- name: budgets
+  description: Datos de presupuestos actualizados y estructurados en formato JSON.
+  location: data/seed/budgets
+  owner_technical: data-platform@empresa.com
+  owner_business: Dirección Comercial
+  format: json
+  volume:
+    records: 7
+    size_mb: 0.0011
+  refresh:
+    declared: on_close
+    observed_last_update: '2026-06-04'
+    observed_lag_days: 0
+  quality:
+    completeness: 5
+    consistency: 5
+    actuality: 5
+    reliability: 5
+  sensitivity:
+    contains_pii: true
+    pii_types:
+    - client_name
+    access_restrictions: null
+  lineage:
+    upstream: CRM export (presupuestos firmados)
+    transformations:
+    - export JSON por presupuesto
+  decision: include
+  decision_reason: 'Decisión revisada a mano. LLM sugirió ''include'': La fuente es
+    reciente, autoritativa y estructuralmente coherente.'
+  notes: null
+- name: transcripts
+  description: Transcripciones de conversaciones con etiquetado de speakers, potencialmente
+    de sesiones de estimación o planificación de presupuestos. Fuente reciente y bien
+    estructurada para análisis de contexto conversacional.
+  location: data/seed/transcripts
+  owner_technical: data-platform@empresa.com
+  owner_business: Oficina de Proyectos
+  format: txt
+  volume:
+    records: 2
+    size_mb: 0.0002
+  refresh:
+    declared: per_meeting
+    observed_last_update: '2026-06-04'
+    observed_lag_days: 0
+  quality:
+    completeness: 4
+    consistency: 5
+    actuality: 5
+    reliability: 4
+  sensitivity:
+    contains_pii: true
+    pii_types:
+    - speaker_name
+    access_restrictions: interno
+  lineage:
+    upstream: Notas/transcripciones de reuniones de alcance
+    transformations:
+    - volcado a texto plano
+  decision: review
+  decision_reason: 'Decisión revisada a mano. LLM sugirió ''include'': Fuente reciente
+    (lag 0 días), estructuralmente coherente con speaker tags presentes, y potencialmente
+    autoritativa para capturar conversaciones de estimación de presupuestos. Tamaño
+    mínimo pero consistente con transcripciones de seed data.'
+  notes: null
+- name: rates
+  description: Datos de tarifas por rol y senioridad en formato Excel.
+  location: data/seed/rates
+  owner_technical: finanzas@empresa.com
+  owner_business: Finanzas
+  format: xlsx
+  volume:
+    records: 1
+    size_mb: 0.0047
+  refresh:
+    declared: yearly
+    observed_last_update: '2025-02-09'
+    observed_lag_days: 480
+  quality:
+    completeness: 3
+    consistency: 4
+    actuality: 1
+    reliability: 3
+  sensitivity:
+    contains_pii: false
+    pii_types: []
+    access_restrictions: null
+  lineage:
+    upstream: Tarifario interno anual
+    transformations:
+    - mantenimiento manual en Excel
+  decision: exclude
+  decision_reason: 'Decisión revisada a mano. LLM sugirió ''exclude'': La fuente está
+    obsoleta con un retraso observado de 480 días.'
+  notes: null
