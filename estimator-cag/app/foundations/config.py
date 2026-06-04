@@ -127,6 +127,20 @@ class Settings(BaseSettings):
         0.05, alias="CAG_COST_PER_TURN_BUDGET_USD"
     )
 
+    # ---- RAG chunking (S07) ----
+    chunk_max_tokens: int = Field(512, alias="CHUNK_MAX_TOKENS")
+    chunk_overlap_tokens: int = Field(80, alias="CHUNK_OVERLAP_TOKENS")
+    chunk_orphan_min_tokens: int = Field(20, alias="CHUNK_ORPHAN_MIN_TOKENS")
+    semantic_breakpoint_threshold: float = Field(
+        0.55, alias="SEMANTIC_BREAKPOINT_THRESHOLD"
+    )
+    propositional_prompt_version: str = Field(
+        "v1", alias="PROPOSITIONAL_PROMPT_VERSION"
+    )
+    contextual_retrieval_prompt_version: str = Field(
+        "v1", alias="CONTEXTUAL_RETRIEVAL_PROMPT_VERSION"
+    )
+
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"
     environment: str = "development"
