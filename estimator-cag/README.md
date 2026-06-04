@@ -970,3 +970,101 @@ recuperando solo lo relevante. Detalle en `evals/stress/REPORT.md`.
 - **Latencia con ruido**: el reparto de modelos del Router introduce varianza
   turn-a-turno; la tendencia (latencia alta y creciente) es clara, el factor
   exacto fluctúa entre corridas.
+
+---
+
+## Sesión 06 — Módulo de ingesta de datos
+
+La rama `session-06` implementa los **pasos 1–4 del "viaje del dato"**
+(Data-Driven AI): catálogo de fuentes como código, contrato `Document`
+canónico, pipeline `loaders → parsers → cleaning → normalizers → orchestrator`
+y un endpoint de ingesta bloqueante. Todo el bloque es **aditivo y aislado**:
+vive en `app/ingest/` y **no se cablea** al flujo conversacional/ACB/estimación.
+La vectorización, el chunking, la base vectorial, el retrieval RAG y la
+anonimización PII con **Presidio** quedan reservados para **session-07**.
+
+### El viaje del dato
+
+1. **Catálogo (el dato como código).** `data/catalog/data_catalog.yaml` se
+   versiona en git, se carga con `load_catalog` y se valida contra modelos
+   Pydantic (`DataCatalog`/`CatalogSource`). El pipeline solo itera sobre
+   `included_sources()`; lo marcado `review`/`exclude` nunca se ingesta.
+2. **Inspección + evaluación.** `inspect_filesystem_source` recoge *folder
+   facts* (conteo, tamaño, antigüedad, formatos) y un **muestreo estructural**
+   (claves de JSON, columnas de XLSX, flags de TXT) **sin valores crudos**. El
+   evaluador LLM (`evaluate_source`, Q1) recibe **solo** esos hechos y devuelve
+   una pista de calidad/sensibilidad/decisión. El catálogo es código revisado a
+   mano: el LLM solo sugiere. *(En producción ese juicio debería correr contra
+   un modelo on-prem local; el contrato `facts → CatalogSourceJudgment` no
+   cambia si se sustituye el backend.)*
+3. **Loaders → parsers → cleaning → normalizers.** Tres capas separadas: el
+   loader resuelve el acceso físico y entrega bytes (no entiende formato); el
+   parser extrae a una representación **intermedia** (DataFrame / turnos, no
+   `Document`); la limpieza normaliza de forma determinista y valida con
+   **Pandera** (`lazy=True`) enrutando por severidad (válido / cuarentena /
+   descarte); el normalizer convierte al contrato canónico `Document`
+   propagando los metadatos del catálogo (lineage, PII, access).
+4. **Orquestador → `Document[]` en memoria.** `run_ingestion` pega todo,
+   respeta la decisión del catálogo y produce `Document` **sin persistencia ni
+   chunking** (eso es session-07).
+
+### Contrato canónico
+
+`Document{content, metadata}` con `DocumentMetadata` (schema teórico S6-04). El
+downstream (chunking/embedding/retrieval) dependerá **solo** de `Document`. La
+trazabilidad por construcción (`source_name` + `source_location` + lineage) es
+lo que después permite citar fuentes.
+
+### Viabilidad arquitectónica (Q2)
+
+`app/ingest/architecture.py` decide CAG/RAG/híbrido. `summarize_baseline` lee
+los números **reales** del baseline pre-S06 (`evals/stress/results.csv`,
+`latency_ms` → segundos) y `IngestionArchitecture.viability()` deriva
+`latency_acceptable`/`cost_per_query_acceptable` de ahí: con P95 ≈ 70 s ≫ SLA
+de 4 s, `is_viable()` es `False` y la recomendación es **PURE_RAG**, defendible
+con números concretos.
+
+### Datos: catálogo comiteado, seed gitignored
+
+El **catálogo** (`data/catalog/data_catalog.yaml`) **se versiona** con rutas
+relativas a `data/seed/...`. El **seed sintético** (`data/seed/`) **no se
+comitea** (`.gitignore`) pero es **reproducible de forma determinista** con
+`scripts/build_seed.py` (semilla fija, defectos calibrados del directo:
+importe negativo → descarte, `"to be defined"` → cuarentena, dos versiones del
+mismo `budget_id` → dedup keep-last, moneda heterogénea, `budget_id` roto →
+descarte, transcripción legacy sin speaker tags → review, rate card envejecido
+> 365 días → exclude).
+
+### CLIs
+
+```bash
+uv run python -m scripts.build_seed              # genera data/seed/ (gitignored)
+uv run python -m scripts.inspect_sources         # inspecciona + evalúa (LLM) → data_catalog.yaml
+uv run python -m scripts.inspect_sources --offline   # ídem sin LLM (determinista)
+uv run python -m scripts.demo_cleaning           # demo limpieza+validación (válidos/cuarentena/descarte)
+uv run python -m scripts.run_ingestion           # catálogo → orquesta → reporte de auditoría
+uv run python -m scripts.recommend_architecture  # baseline real → recomendación (PURE_RAG)
+```
+
+### Endpoints
+
+```bash
+uv run uvicorn app.main:app                       # versión 0.6.0
+curl localhost:8000/api/v1/ingest/catalog         # GET: estado del catálogo (included/review/excluded)
+curl -X POST localhost:8000/api/v1/ingest         # POST: ejecuta la ingesta (bloqueante)
+```
+
+El endpoint `POST /api/v1/ingest` es un `def` **síncrono** a propósito: FastAPI
+lo corre en threadpool, manteniendo la semántica bloqueante sin bloquear el
+event loop ni romper el wrapper síncrono. Session-07 lo migrará a no-bloqueante.
+
+### Tests
+
+```bash
+uv run pytest tests/ingest -m "not integration" -q   # cobertura del módulo
+uv run pytest tests/ingest/test_catalog_evaluator.py -m integration   # juicio LLM real
+```
+
+`test_cleaning.py` fija empíricamente los nombres de los checks de la versión
+instalada de Pandera; si cambian, se ajusta
+`app.ingest.cleaning.policy._DISCARD_CHECKS`.

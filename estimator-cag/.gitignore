@@ -24,3 +24,7 @@ htmlcov/
 .uv/
 
 .local/
+
+# Seed sintético de ingesta (S06): reproducible con scripts/build_seed.py.
+# El catálogo (data/catalog/) SÍ se versiona; el seed no.
+data/seed/
