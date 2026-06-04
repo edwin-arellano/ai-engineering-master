@@ -1068,3 +1068,87 @@ uv run pytest tests/ingest/test_catalog_evaluator.py -m integration   # juicio L
 `test_cleaning.py` fija empíricamente los nombres de los checks de la versión
 instalada de Pandera; si cambian, se ajusta
 `app.ingest.cleaning.policy._DISCARD_CHECKS`.
+
+---
+
+## Pre-sesión 07 — Pipeline de embeddings y chunking
+
+La rama `pre-session-07` añade un **pipeline mínimo de embeddings y chunking**
+(ejercicio S7-01) en `app/embedding_pipeline/`. Toma presupuestos con esquema
+anidado, los parte en chunks estructurales (un componente = un chunk) con
+**contextual chunk headers**, los embebe vía LiteLLM y los devuelve por HTTP.
+Es un módulo **standalone y aditivo**: no importa `app/ingest/` ni el contrato
+`Document` de S06, usa su propio `Budget` anidado. **Sin persistencia ni
+retrieval** — el chunker de transcripciones, la base vectorial (S08 pgvector) y
+la búsqueda semántica llegan después.
+
+### Chunking estructural
+
+`JSONStructuralChunker` produce **un `Chunk` por componente** del presupuesto.
+El `text` que se embebe combina los detalles del componente con headers
+contextuales del presupuesto padre (sector, año, tecnología, summary) — la
+palanca de mayor ROI en RAG, una versión estática y barata de *Contextual
+Retrieval* sin LLM. La **metadata filtrable** (7 campos: `budget_id`,
+`component_id`, `client_sector`, `main_technology`, `year`, `complexity`,
+`estimated_hours`) viaja **fuera** del texto embebido, lista para filtrar en
+S08. El `chunk_id` es `"{budget_id}::{component_id}"` y el `token_count` se
+calcula con **tiktoken**. No hay overlap ni splitting: un chunk anormalmente
+grande solo emite un *warning* (`chunk.unusually_large`), no se parte.
+
+### Embedder
+
+`LiteLLMEmbedder` usa `litellm.embedding()` con **`text-embedding-3-small`**
+(1536 dims), reutilizando `EMBEDDINGS_MODEL`/`OPENAI_API_KEY` ya existentes (no
+se crean env vars nuevas para el modelo). El cliente es LiteLLM por
+**portabilidad**: el swap futuro a Voyage AI (el embedder recomendado por
+Anthropic, que no tiene embeddings propios) o Google es un cambio de string.
+`embed_many` llama a la API en **batches** (`EMBEDDING_BATCH_SIZE`, default 100),
+nunca una llamada por chunk, con **retry exponencial** (3×: 1/2/4 s) ante rate
+limit. El coste se estima con los tokens reales de `response.usage` y una
+constante de módulo etiquetada (`EMBEDDING_PRICE_PER_MILLION_TOKENS`, placeholder
+a verificar).
+
+### Endpoint
+
+```bash
+uv run uvicorn app.main:app                        # versión 0.7.0
+# ingest del sample (envuelto en {"budgets": [...]})
+python3 -c "import json; print(json.dumps({'budgets': json.load(open('data/budgets_sample.json'))}))" > /tmp/body.json
+curl -s -X POST localhost:8000/embeddings/ingest \
+  -H "Content-Type: application/json" --data @/tmp/body.json
+```
+
+`POST /embeddings/ingest` (visible en `/docs`) orquesta chunker → embedder y
+devuelve `IngestResponse{chunks, stats}` con `total_budgets`, `total_chunks`,
+`total_tokens` y `estimated_cost_usd`. Es un `def` **síncrono** a propósito:
+`litellm.embedding()` es bloqueante y FastAPI lo corre en threadpool sin
+bloquear el event loop (misma decisión que el endpoint de ingesta de S06).
+
+### CLIs y sanity check
+
+```bash
+uv run python -m scripts.build_budgets_sample      # genera data/budgets_sample.json (15 budgets, comiteado)
+uv run python -m scripts.compare \
+  --text-a "OAuth 2.0 authentication backend for fintech" \
+  --text-b "JWT-based authorization service for banking app"   # coseno a mano (sin numpy/sklearn)
+uv run python -m scripts.sanity_check              # 3 parejas → app/embedding_pipeline/SANITY_CHECK.md
+```
+
+`compare.py` calcula la **similitud coseno a mano** con la biblioteca estándar y
+es ejecutable dentro y fuera del contenedor. El sanity check de tres parejas
+(cercanos / no relacionados / genéricos) deja sus números reales y la lectura en
+`app/embedding_pipeline/SANITY_CHECK.md`.
+
+### Dependencias y tests
+
+Nueva dependencia: **`tiktoken`** (conteo de tokens). No se añade `numpy` ni
+`scikit-learn` (el coseno es a mano).
+
+```bash
+uv run pytest tests/embedding_pipeline -m "not integration" -q   # schemas, chunker, coseno
+uv run pytest tests/embedding_pipeline -m integration -q          # embedder real (API)
+```
+
+El test de integración fija el comportamiento real de la versión instalada de
+LiteLLM (acceso a `response.data`, presencia de `usage`, clase de
+`RateLimitError`).
