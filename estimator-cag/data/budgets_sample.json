@@ -1,0 +1,604 @@
+[
+  {
+    "budget_id": "BUD-2024-001",
+    "client_metadata": {
+      "name": "FintechCorp",
+      "sector": "finance",
+      "country": "ES"
+    },
+    "project_summary": "Mobile banking API with OAuth 2.0 authentication and PSD2 compliance",
+    "main_technology": "ruby_on_rails",
+    "year": 2024,
+    "total_estimated_hours": 320,
+    "components": [
+      {
+        "component_id": "AUTH-001",
+        "name": "OAuth 2.0 authentication backend",
+        "description": "OAuth 2.0 flows with JWT session management, multi-tenant token isolation and per-client rate limiting.",
+        "tech_stack": [
+          "ruby_on_rails",
+          "postgresql",
+          "redis"
+        ],
+        "estimated_hours": 120,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "PSD2-002",
+        "name": "PSD2 compliance module",
+        "description": "Strong Customer Authentication and consent management aligned with PSD2 regulatory requirements.",
+        "tech_stack": [
+          "ruby_on_rails",
+          "postgresql"
+        ],
+        "estimated_hours": 90,
+        "complexity": "high",
+        "dependencies": [
+          "AUTH-001"
+        ]
+      },
+      {
+        "component_id": "TXN-003",
+        "name": "Transaction ledger service",
+        "description": "Double-entry ledger with idempotent transaction posting and reconciliation jobs.",
+        "tech_stack": [
+          "ruby_on_rails",
+          "postgresql"
+        ],
+        "estimated_hours": 110,
+        "complexity": "medium",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-002",
+    "client_metadata": {
+      "name": "PayFlow",
+      "sector": "finance",
+      "country": "MX"
+    },
+    "project_summary": "Payment gateway integration with fraud scoring",
+    "main_technology": "node_js",
+    "year": 2024,
+    "total_estimated_hours": 230,
+    "components": [
+      {
+        "component_id": "PAY-001",
+        "name": "Payment gateway adapter",
+        "description": "Adapters for multiple PSPs with unified charge/refund API and webhook reconciliation.",
+        "tech_stack": [
+          "node_js",
+          "postgresql"
+        ],
+        "estimated_hours": 100,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "FRAUD-002",
+        "name": "Fraud scoring engine",
+        "description": "Rule-based plus heuristic fraud scoring on transaction streams with manual review queue.",
+        "tech_stack": [
+          "python",
+          "redis"
+        ],
+        "estimated_hours": 130,
+        "complexity": "high",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2023-003",
+    "client_metadata": {
+      "name": "LendEasy",
+      "sector": "finance",
+      "country": "ES"
+    },
+    "project_summary": "Loan origination platform with credit decisioning",
+    "main_technology": "java",
+    "year": 2023,
+    "total_estimated_hours": 235,
+    "components": [
+      {
+        "component_id": "LOAN-001",
+        "name": "Loan origination workflow",
+        "description": "Multi-step origination workflow with document upload and underwriting state machine.",
+        "tech_stack": [
+          "java",
+          "postgresql"
+        ],
+        "estimated_hours": 140,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "CREDIT-002",
+        "name": "Credit decisioning service",
+        "description": "Scorecard-based decisioning with explainability output for compliance review.",
+        "tech_stack": [
+          "python"
+        ],
+        "estimated_hours": 95,
+        "complexity": "medium",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-004",
+    "client_metadata": {
+      "name": "InvestHub",
+      "sector": "finance",
+      "country": "US"
+    },
+    "project_summary": "Robo-advisor portfolio rebalancing service",
+    "main_technology": "python",
+    "year": 2024,
+    "total_estimated_hours": 190,
+    "components": [
+      {
+        "component_id": "PORT-001",
+        "name": "Portfolio rebalancing engine",
+        "description": "Periodic rebalancing against target allocations with tax-aware lot selection.",
+        "tech_stack": [
+          "python",
+          "postgresql"
+        ],
+        "estimated_hours": 120,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "REPORT-002",
+        "name": "Client reporting module",
+        "description": "Scheduled PDF statements and performance attribution dashboards.",
+        "tech_stack": [
+          "python",
+          "react"
+        ],
+        "estimated_hours": 70,
+        "complexity": "low",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-005",
+    "client_metadata": {
+      "name": "ShopNova",
+      "sector": "ecommerce",
+      "country": "ES"
+    },
+    "project_summary": "Headless e-commerce storefront with personalization",
+    "main_technology": "node_js",
+    "year": 2024,
+    "total_estimated_hours": 270,
+    "components": [
+      {
+        "component_id": "CART-001",
+        "name": "Cart and checkout service",
+        "description": "Server-side cart, multi-currency checkout and inventory reservation with timeout release.",
+        "tech_stack": [
+          "node_js",
+          "postgresql",
+          "redis"
+        ],
+        "estimated_hours": 110,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "RECO-002",
+        "name": "Product recommendation widget",
+        "description": "Collaborative-filtering recommendations served via low-latency edge cache.",
+        "tech_stack": [
+          "python",
+          "redis"
+        ],
+        "estimated_hours": 85,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "SEARCH-003",
+        "name": "Faceted search",
+        "description": "Faceted catalog search with synonyms and typo tolerance.",
+        "tech_stack": [
+          "elasticsearch",
+          "node_js"
+        ],
+        "estimated_hours": 75,
+        "complexity": "low",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2023-006",
+    "client_metadata": {
+      "name": "MarketPlace24",
+      "sector": "ecommerce",
+      "country": "BR"
+    },
+    "project_summary": "Multi-vendor marketplace with split payments",
+    "main_technology": "ruby_on_rails",
+    "year": 2023,
+    "total_estimated_hours": 195,
+    "components": [
+      {
+        "component_id": "VENDOR-001",
+        "name": "Vendor onboarding",
+        "description": "KYC-lite vendor onboarding with payout account verification.",
+        "tech_stack": [
+          "ruby_on_rails",
+          "postgresql"
+        ],
+        "estimated_hours": 90,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "SPLIT-002",
+        "name": "Split payment engine",
+        "description": "Order-level payment splitting across vendors with platform fee retention.",
+        "tech_stack": [
+          "ruby_on_rails"
+        ],
+        "estimated_hours": 105,
+        "complexity": "high",
+        "dependencies": [
+          "VENDOR-001"
+        ]
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-007",
+    "client_metadata": {
+      "name": "FreshCart",
+      "sector": "ecommerce",
+      "country": "MX"
+    },
+    "project_summary": "Grocery delivery slot booking and routing",
+    "main_technology": "node_js",
+    "year": 2024,
+    "total_estimated_hours": 215,
+    "components": [
+      {
+        "component_id": "SLOT-001",
+        "name": "Delivery slot booking",
+        "description": "Capacity-aware slot booking with overbooking guardrails per zone.",
+        "tech_stack": [
+          "node_js",
+          "postgresql",
+          "redis"
+        ],
+        "estimated_hours": 95,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "ROUTE-002",
+        "name": "Route optimization",
+        "description": "Heuristic vehicle routing for same-day grocery deliveries.",
+        "tech_stack": [
+          "python"
+        ],
+        "estimated_hours": 120,
+        "complexity": "high",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-008",
+    "client_metadata": {
+      "name": "StyleLoop",
+      "sector": "ecommerce",
+      "country": "US"
+    },
+    "project_summary": "Fashion returns automation and resale",
+    "main_technology": "python",
+    "year": 2024,
+    "total_estimated_hours": 150,
+    "components": [
+      {
+        "component_id": "RET-001",
+        "name": "Returns automation",
+        "description": "Self-service returns with label generation and refund orchestration.",
+        "tech_stack": [
+          "python",
+          "postgresql"
+        ],
+        "estimated_hours": 80,
+        "complexity": "low",
+        "dependencies": []
+      },
+      {
+        "component_id": "RESALE-002",
+        "name": "Resale listing pipeline",
+        "description": "Automated grading and relisting of returned items into a resale catalog.",
+        "tech_stack": [
+          "python"
+        ],
+        "estimated_hours": 70,
+        "complexity": "medium",
+        "dependencies": [
+          "RET-001"
+        ]
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2023-009",
+    "client_metadata": {
+      "name": "MediTrack",
+      "sector": "healthcare",
+      "country": "ES"
+    },
+    "project_summary": "Patient appointment and EHR integration",
+    "main_technology": "java",
+    "year": 2023,
+    "total_estimated_hours": 230,
+    "components": [
+      {
+        "component_id": "APPT-001",
+        "name": "Appointment scheduling",
+        "description": "Slot-based scheduling with clinician calendars and reminder notifications.",
+        "tech_stack": [
+          "java",
+          "postgresql"
+        ],
+        "estimated_hours": 100,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "EHR-002",
+        "name": "EHR integration (HL7/FHIR)",
+        "description": "FHIR-based integration for patient demographics and encounter sync.",
+        "tech_stack": [
+          "java"
+        ],
+        "estimated_hours": 130,
+        "complexity": "high",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-010",
+    "client_metadata": {
+      "name": "CareLink",
+      "sector": "healthcare",
+      "country": "US"
+    },
+    "project_summary": "Telehealth video consultation platform",
+    "main_technology": "node_js",
+    "year": 2024,
+    "total_estimated_hours": 230,
+    "components": [
+      {
+        "component_id": "VIDEO-001",
+        "name": "Video consultation",
+        "description": "WebRTC video sessions with waiting room and clinician handoff.",
+        "tech_stack": [
+          "node_js",
+          "redis"
+        ],
+        "estimated_hours": 140,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "RX-002",
+        "name": "e-Prescription module",
+        "description": "Electronic prescription issuance with pharmacy routing.",
+        "tech_stack": [
+          "node_js",
+          "postgresql"
+        ],
+        "estimated_hours": 90,
+        "complexity": "medium",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-011",
+    "client_metadata": {
+      "name": "VitalSense",
+      "sector": "healthcare",
+      "country": "DE"
+    },
+    "project_summary": "Remote patient monitoring ingestion",
+    "main_technology": "python",
+    "year": 2024,
+    "total_estimated_hours": 185,
+    "components": [
+      {
+        "component_id": "INGEST-001",
+        "name": "Device data ingestion",
+        "description": "Streaming ingestion of vitals from BLE devices with backfill on reconnect.",
+        "tech_stack": [
+          "python",
+          "redis"
+        ],
+        "estimated_hours": 110,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "ALERT-002",
+        "name": "Threshold alerting",
+        "description": "Per-patient threshold alerting with escalation to care team.",
+        "tech_stack": [
+          "python",
+          "postgresql"
+        ],
+        "estimated_hours": 75,
+        "complexity": "medium",
+        "dependencies": [
+          "INGEST-001"
+        ]
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2023-012",
+    "client_metadata": {
+      "name": "AssemblyOne",
+      "sector": "industrial",
+      "country": "DE"
+    },
+    "project_summary": "Factory IoT telemetry and OEE dashboards",
+    "main_technology": "python",
+    "year": 2023,
+    "total_estimated_hours": 200,
+    "components": [
+      {
+        "component_id": "TELE-001",
+        "name": "Telemetry collector",
+        "description": "MQTT telemetry collection from PLCs with edge buffering.",
+        "tech_stack": [
+          "python",
+          "postgresql"
+        ],
+        "estimated_hours": 120,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "OEE-002",
+        "name": "OEE dashboard",
+        "description": "Overall Equipment Effectiveness dashboards with shift breakdowns.",
+        "tech_stack": [
+          "react",
+          "python"
+        ],
+        "estimated_hours": 80,
+        "complexity": "medium",
+        "dependencies": [
+          "TELE-001"
+        ]
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-013",
+    "client_metadata": {
+      "name": "LogiChain",
+      "sector": "industrial",
+      "country": "ES"
+    },
+    "project_summary": "Warehouse management and slotting",
+    "main_technology": "java",
+    "year": 2024,
+    "total_estimated_hours": 235,
+    "components": [
+      {
+        "component_id": "WMS-001",
+        "name": "Warehouse management core",
+        "description": "Inbound/outbound flows, putaway and pick-path generation.",
+        "tech_stack": [
+          "java",
+          "postgresql"
+        ],
+        "estimated_hours": 150,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "SLOT-002",
+        "name": "Dynamic slotting",
+        "description": "Velocity-based slotting recommendations recomputed nightly.",
+        "tech_stack": [
+          "python"
+        ],
+        "estimated_hours": 85,
+        "complexity": "medium",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2024-014",
+    "client_metadata": {
+      "name": "GridWatch",
+      "sector": "industrial",
+      "country": "US"
+    },
+    "project_summary": "Energy grid anomaly detection",
+    "main_technology": "python",
+    "year": 2024,
+    "total_estimated_hours": 225,
+    "components": [
+      {
+        "component_id": "ANOM-001",
+        "name": "Anomaly detection",
+        "description": "Streaming anomaly detection on substation telemetry with seasonal baselines.",
+        "tech_stack": [
+          "python",
+          "redis"
+        ],
+        "estimated_hours": 135,
+        "complexity": "high",
+        "dependencies": []
+      },
+      {
+        "component_id": "VIZ-002",
+        "name": "Operator console",
+        "description": "Real-time operator console with acknowledgment workflow.",
+        "tech_stack": [
+          "react",
+          "node_js"
+        ],
+        "estimated_hours": 90,
+        "complexity": "medium",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "budget_id": "BUD-2023-015",
+    "client_metadata": {
+      "name": "EduForge",
+      "sector": "other",
+      "country": "ES"
+    },
+    "project_summary": "LMS with adaptive learning paths",
+    "main_technology": "ruby_on_rails",
+    "year": 2023,
+    "total_estimated_hours": 195,
+    "components": [
+      {
+        "component_id": "LMS-001",
+        "name": "Course delivery",
+        "description": "Course content delivery with progress tracking and quizzes.",
+        "tech_stack": [
+          "ruby_on_rails",
+          "postgresql"
+        ],
+        "estimated_hours": 100,
+        "complexity": "medium",
+        "dependencies": []
+      },
+      {
+        "component_id": "ADAPT-002",
+        "name": "Adaptive path engine",
+        "description": "Adaptive sequencing of lessons based on assessment performance.",
+        "tech_stack": [
+          "python"
+        ],
+        "estimated_hours": 95,
+        "complexity": "high",
+        "dependencies": [
+          "LMS-001"
+        ]
+      }
+    ]
+  }
+]
