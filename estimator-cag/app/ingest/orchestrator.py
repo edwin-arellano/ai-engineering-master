@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
 import structlog
 
 from app.ingest.catalog.models import CatalogSource, DataCatalog, IngestionDecision
@@ -50,19 +51,30 @@ def _ingest_source(
     if parser is None:
         raise ValueError(f"No hay parser registrado para el formato: {source.format}")
 
-    for ref in loader.list_files(source.location):
-        parsed = parser.parse(loader.read(ref), source_hint=ref.path)
+    refs = loader.list_files(source.location)
 
-        if source.format == "json":  # presupuestos: limpieza + validación Pandera
-            cleaned = clean_budget_records(parsed.dataframe)
-            vr = validate_with_policy(cleaned, BudgetRecord)
-            result.validation_reports[source.name] = vr.report
-            result.quarantined_count += len(vr.quarantined)
-            result.discarded_count += len(vr.discarded)
-            result.documents += canonical.normalize_budgets(
-                vr.valid, source, ingested_at
-            )
-        elif source.format == "txt":
+    if source.format == "json":  # presupuestos: limpieza + validación Pandera
+        # TODOS los ficheros JSON de la fuente forman UN solo DataFrame: solo así
+        # el dedup por budget_id (versiones del mismo presupuesto en ficheros
+        # distintos) y la coerción de columnas operan sobre el conjunto completo.
+        frames = [
+            parser.parse(loader.read(ref), source_hint=ref.path).dataframe
+            for ref in refs
+        ]
+        if not frames:
+            return
+        combined = pd.concat(frames, ignore_index=True)
+        cleaned = clean_budget_records(combined)
+        vr = validate_with_policy(cleaned, BudgetRecord)
+        result.validation_reports[source.name] = vr.report
+        result.quarantined_count += len(vr.quarantined)
+        result.discarded_count += len(vr.discarded)
+        result.documents += canonical.normalize_budgets(vr.valid, source, ingested_at)
+        return
+
+    for ref in refs:
+        parsed = parser.parse(loader.read(ref), source_hint=ref.path)
+        if source.format == "txt":
             result.documents += canonical.normalize_transcript_turns(
                 parsed.records, source, ingested_at, ref.path
             )
