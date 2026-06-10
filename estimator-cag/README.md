@@ -1261,6 +1261,92 @@ uv run python -m scripts.query_examples  # 5 queries → output_examples.txt
 > Alembic y los scripts se ejecutan en local con `uv run`: la imagen del contenedor es
 > `--no-dev` y no incluye `alembic/`, `scripts/` ni `data/`.
 
+### Flujos
+
+**Ingesta (`POST /embeddings/ingest`).** Un presupuesto se valida, se trocea con el
+chunker estructural, se embebe (embedder bloqueante en un thread para no bloquear el
+event loop) y se persiste —documento + chunks— en **una sola transacción**. El check de
+`source_path` da `409` antes de hacer cualquier trabajo; un `content` que no es `Budget`
+da `422`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Cliente (ingest_corpus)
+    participant R as Router /embeddings (async)
+    participant Repo as repository
+    participant E as LiteLLMEmbedder<br/>(asyncio.to_thread)
+    participant DB as Postgres + pgvector
+
+    C->>R: POST {source_path, document_type, content}
+
+    R->>Repo: get_document_id_by_source_path(source_path)
+    Repo->>DB: SELECT id FROM documents WHERE source_path = ?
+    DB-->>Repo: id | None
+    alt source_path ya existe
+        R-->>C: 409 {detail, document_id}
+    end
+
+    R->>R: Budget.model_validate(content)
+    alt content no es un Budget válido
+        R-->>C: 422 (errores de validación)
+    end
+
+    R->>R: build_chunker("structural").chunk([budget])<br/>filtra is_orphan
+
+    R->>E: embed_many(chunks)  (hop a thread)
+    E->>E: litellm.embedding (bloqueante, por lotes)
+    alt error de embeddings
+        R-->>C: 500 "Error generando embeddings"
+    end
+    E-->>R: list[EmbeddedChunk] (1536 dims c/u)
+
+    rect rgb(235, 245, 255)
+    note over R,DB: UNA sola transacción
+    R->>Repo: ingest_document(metadata, embedded_chunks)
+    Repo->>DB: INSERT documents ... (add)
+    Repo->>DB: flush()  → asigna document.id sin cerrar tx
+    Repo->>DB: INSERT chunks[] (add_all, FK = document.id)
+    Repo->>DB: commit()  → atómico
+    end
+    DB-->>Repo: OK
+    Repo-->>R: (document_id, chunks_created)
+
+    R-->>C: 200 {document_id, chunks_created,<br/>embedding_dimension: 1536, ingestion_time_ms}
+```
+
+**Búsqueda (`POST /search`).** La query se embebe con el **mismo modelo** que la ingesta
+y se buscan los k chunks más cercanos por distancia coseno (`<=>`). Sequential scan (sin
+índice todavía) y sin proyectar la columna `embedding`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Cliente (query_examples)
+    participant R as Router /search (async)
+    participant E as LiteLLMEmbedder<br/>(asyncio.to_thread)
+    participant Repo as repository
+    participant DB as Postgres + pgvector
+
+    C->>R: POST {query, k}
+
+    R->>E: embed_one(query)  (hop a thread)
+    E->>E: litellm.embedding (MISMO modelo que la ingesta)
+    alt error de embeddings
+        R-->>C: 500 "Error embebiendo la query"
+    end
+    E-->>R: query_vector (1536 dims)
+
+    R->>Repo: search_chunks(query_vector, k)
+    Repo->>DB: SELECT id, document_id, chunk_type, content, metadata,<br/>embedding <=> :q AS distance<br/>ORDER BY distance LIMIT k
+    note right of DB: cosine_distance (<=>)<br/>sequential scan (sin índice)<br/>NO se proyecta embedding
+    DB-->>Repo: filas ordenadas por distancia asc
+    Repo-->>R: list[Row]
+
+    R->>R: map → SearchResultItem (distance redondeada a 4)
+    R-->>C: 200 {query, k, search_time_ms,<br/>results[] ordenados por distancia asc}
+```
+
 ### Decisiones de esquema
 
 - **Dos tablas, no una.** Un presupuesto produce N chunks. Una tabla única duplicaría la

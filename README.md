@@ -14,7 +14,8 @@ sesión en vivo) y `session-NN` (estado tras la sesión en vivo).
 - `estimator-cag/`: servicio FastAPI que construye un estimador de
   software basado en transcripciones de reunión. Crece a lo largo de
   todas las sesiones (CAG → wrapper → formulario → structured outputs
-  → guardrails → cache semántico).
+  → guardrails → cache semántico → ingesta → chunking/embeddings →
+  persistencia y búsqueda semántica en pgvector).
 
 ## Ramas
 
@@ -32,6 +33,7 @@ sesión en vivo) y `session-NN` (estado tras la sesión en vivo).
 | `session-06` | **Módulo de ingesta de datos** aislado (`app/ingest/`), pasos 1–4 del "viaje del dato". Catálogo de fuentes como código (`data_catalog.yaml` validado con Pydantic), contrato `Document` canónico, pipeline `loaders → parsers (json/txt/xlsx) → cleaning (pandas + Pandera con política cuarentena/descarte) → normalizers → orchestrator`, endpoint `POST /api/v1/ingest` (bloqueante en threadpool). Evaluador de fuentes vía LLM sobre solo hechos (sin contenido crudo) y evaluador de viabilidad CAG/RAG que consume el baseline pre-S06. Seed sintético reproducible (gitignored), catálogo comiteado. Sin vectorización ni Presidio. |
 | `pre-session-07` | **Pipeline de embeddings y chunking** aislado (`app/embedding_pipeline/`, ejercicio S7-01). `JSONStructuralChunker` (un componente = un chunk, contextual chunk headers, metadata filtrable fuera del texto, `token_count` con tiktoken), `LiteLLMEmbedder` (`text-embedding-3-small` 1536 dims, batching + retry exponencial, coste por tokens reales), endpoint `POST /embeddings/ingest` (v0.7.0). CLI `compare.py` con coseno a mano (sin numpy/sklearn) y `sanity_check.py` → `SANITY_CHECK.md`. Sample sintético comiteado (15 presupuestos anidados). Sin persistencia ni retrieval (S08 pgvector). |
 | `session-07` | **Refactor de arquitectura por capas** (`git mv`, historia preservada): `app/` se reorganiza en `foundations` (infra: wrapper/config/logging/metrics/pricing/cache/prompts), `domain` (schemas), `api/routers`, `ingest` (S06 intacto) y `generation/{cag,agentic,rag}`. **Suite de 8 estrategias de chunking** sobre la interfaz `Chunker` común (`structural`, `recursive`, `fixed_size`, `sentence_window`, `hierarchical`, `semantic`, `propositional`, `contextual_retrieval`) con registry e inyección; huérfanos (`is_orphan`) que no se vectorizan; comparador con métricas (chunks/huérfanos/percentiles/latencia/coseno vs query) y comparación de dimensiones 1536 vs 768. Endpoint `POST /embeddings/ingest` gana `strategy` opcional. Sin persistencia/pgvector, retrieval ni Presidio (S08+). |
+| `pre-session-08` | **Persistencia en pgvector + búsqueda semántica** (`app/generation/rag/persistence/`). El pipeline de S07 persiste en PostgreSQL + pgvector: dos tablas `documents` → `chunks` (1:N, `ON DELETE CASCADE`), modelos ORM SQLAlchemy 2.0 async (asyncpg) y migración Alembic (extensión `vector` + índices no-vectoriales, incl. GIN sobre metadata JSONB). `POST /embeddings/ingest` refactorizado (contrato destructivo) a persistencia transaccional con `409` idempotente por `source_path`; nuevo `POST /search` por distancia coseno (`<=>`, sequential scan, mismo modelo de embeddings que la ingesta). Servidor v0.8.0; engine cerrado en `lifespan`. Scripts `ingest_corpus`/`query_examples` + `output_examples.txt`. Sin índice vectorial, filtros por metadata, búsqueda híbrida ni tuning (reservado al directo S08). |
 
 ## Cómo arrancar
 
