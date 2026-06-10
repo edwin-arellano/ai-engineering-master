@@ -1,0 +1,49 @@
+========================================================================================
+Q1: REST API development with JWT authentication for financial sector
+    (k=5, search_time_ms=501)
+----------------------------------------------------------------------------------------
+  dist=0.4084  chunk_id=1     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.4902  chunk_id=2     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.4937  chunk_id=3     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.5775  chunk_id=4     type=budget_component   [Project: Payment gateway integration with fraud scoring] [Client sector: finance | Year: 2024 | Main tech: node_js]  Co
+  dist=0.6037  chunk_id=5     type=budget_component   [Project: Payment gateway integration with fraud scoring] [Client sector: finance | Year: 2024 | Main tech: node_js]  Co
+
+========================================================================================
+Q2: secure backend service with token-based access control for banking applications
+    (k=5, search_time_ms=349)
+----------------------------------------------------------------------------------------
+  dist=0.4133  chunk_id=1     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.4697  chunk_id=2     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.4799  chunk_id=3     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.6196  chunk_id=5     type=budget_component   [Project: Payment gateway integration with fraud scoring] [Client sector: finance | Year: 2024 | Main tech: node_js]  Co
+  dist=0.6202  chunk_id=4     type=budget_component   [Project: Payment gateway integration with fraud scoring] [Client sector: finance | Year: 2024 | Main tech: node_js]  Co
+
+========================================================================================
+Q3: mobile application for restaurant reservations
+    (k=5, search_time_ms=719)
+----------------------------------------------------------------------------------------
+  dist=0.5932  chunk_id=15    type=budget_component   [Project: Grocery delivery slot booking and routing] [Client sector: ecommerce | Year: 2024 | Main tech: node_js]  Compo
+  dist=0.6096  chunk_id=19    type=budget_component   [Project: Patient appointment and EHR integration] [Client sector: healthcare | Year: 2023 | Main tech: java]  Component
+  dist=0.6395  chunk_id=16    type=budget_component   [Project: Grocery delivery slot booking and routing] [Client sector: ecommerce | Year: 2024 | Main tech: node_js]  Compo
+  dist=0.6684  chunk_id=3     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.6714  chunk_id=10    type=budget_component   [Project: Headless e-commerce storefront with personalization] [Client sector: ecommerce | Year: 2024 | Main tech: node_
+
+========================================================================================
+Q4: integration with external system
+    (k=5, search_time_ms=493)
+----------------------------------------------------------------------------------------
+  dist=0.5853  chunk_id=20    type=budget_component   [Project: Patient appointment and EHR integration] [Client sector: healthcare | Year: 2023 | Main tech: java]  Component
+  dist=0.6124  chunk_id=4     type=budget_component   [Project: Payment gateway integration with fraud scoring] [Client sector: finance | Year: 2024 | Main tech: node_js]  Co
+  dist=0.6137  chunk_id=27    type=budget_component   [Project: Warehouse management and slotting] [Client sector: industrial | Year: 2024 | Main tech: java]  Component: Ware
+  dist=0.6474  chunk_id=19    type=budget_component   [Project: Patient appointment and EHR integration] [Client sector: healthcare | Year: 2023 | Main tech: java]  Component
+  dist=0.6543  chunk_id=6     type=budget_component   [Project: Loan origination platform with credit decisioning] [Client sector: finance | Year: 2023 | Main tech: java]  Co
+
+========================================================================================
+Q5: migration from monolith to microservices architecture using Kubernetes
+    (k=5, search_time_ms=268)
+----------------------------------------------------------------------------------------
+  dist=0.7020  chunk_id=27    type=budget_component   [Project: Warehouse management and slotting] [Client sector: industrial | Year: 2024 | Main tech: java]  Component: Ware
+  dist=0.7028  chunk_id=1     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.7124  chunk_id=3     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.7149  chunk_id=2     type=budget_component   [Project: Mobile banking API with OAuth 2.0 authentication and PSD2 compliance] [Client sector: finance | Year: 2024 | M
+  dist=0.7233  chunk_id=6     type=budget_component   [Project: Loan origination platform with credit decisioning] [Client sector: finance | Year: 2023 | Main tech: java]  Co

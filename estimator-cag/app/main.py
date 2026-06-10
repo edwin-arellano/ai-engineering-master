@@ -1,13 +1,24 @@
 """Punto de entrada de la aplicación FastAPI."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.foundations.logging_config import configure_logging, request_id_middleware
-from app.api.routers import embeddings, ingestion, sessions
+from app.api.routers import embeddings, ingestion, search, sessions
+from app.generation.rag.persistence.database import engine
 
 # IMPORTANTE: configurar logging ANTES de instanciar FastAPI para que los logs
 # del arranque también queden estructurados.
 configure_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Cierra el engine async de SQLAlchemy (pool de conexiones) al apagar la app."""
+    yield
+    await engine.dispose()
+
 
 app = FastAPI(
     title="Estimator CAG",
@@ -17,9 +28,10 @@ app = FastAPI(
         "deslizante, adjuntos PDF/.docx con extracción local, structured "
         "outputs con Instructor y cinco capas de guardrails. Incluye un "
         "subsistema de ingesta de datos aislado (S06) y un pipeline de "
-        "embeddings y chunking aislado (S07)."
+        "embeddings y chunking aislado (S07) persistido en pgvector (pre-S08)."
     ),
-    version="0.7.0",
+    version="0.8.0",
+    lifespan=lifespan,
 )
 
 # Middleware de request_id (debe ir antes de incluir routers)
@@ -28,6 +40,7 @@ app.middleware("http")(request_id_middleware)
 app.include_router(sessions.router)
 app.include_router(ingestion.router)
 app.include_router(embeddings.router)  # prefix /embeddings vive en el router
+app.include_router(search.router)
 
 
 @app.get("/health", tags=["meta"])

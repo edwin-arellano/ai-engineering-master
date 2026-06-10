@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 Sector = Literal["finance", "ecommerce", "healthcare", "industrial", "other"]
 Complexity = Literal["low", "medium", "high"]
@@ -62,31 +62,38 @@ class EmbeddedChunk(Chunk):
     embedding: list[float]
 
 
-class IngestRequest(BaseModel):
-    budgets: list[Budget]
-    # estrategia de chunking; default structural. Se valida contra el registry
-    # (import lazy para evitar el ciclo schemas <- strategies <- registry).
-    strategy: str = "structural"
+class DocumentIngestRequest(BaseModel):
+    """Contrato nuevo de /embeddings/ingest: un documento (un presupuesto) por llamada."""
 
-    @field_validator("strategy")
-    @classmethod
-    def _known_strategy(cls, value: str) -> str:
-        from app.generation.rag.chunking.registry import ALL_STRATEGY_NAMES
-
-        if value not in ALL_STRATEGY_NAMES:
-            raise ValueError(
-                f"Estrategia desconocida '{value}'. Válidas: {ALL_STRATEGY_NAMES}"
-            )
-        return value
+    source_path: str = Field(min_length=1)
+    document_type: str = "historical_budget"
+    # JSON completo del presupuesto; se valida contra Budget en el endpoint.
+    content: dict[str, Any]
 
 
-class IngestStats(BaseModel):
-    total_budgets: int
-    total_chunks: int
-    total_tokens: int
-    estimated_cost_usd: float
+class DocumentIngestResponse(BaseModel):
+    document_id: int
+    chunks_created: int
+    embedding_dimension: int
+    ingestion_time_ms: int
 
 
-class IngestResponse(BaseModel):
-    chunks: list[EmbeddedChunk]
-    stats: IngestStats
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    k: int = Field(default=5, ge=1, le=50)
+
+
+class SearchResultItem(BaseModel):
+    chunk_id: int
+    document_id: int
+    chunk_type: str
+    content: str
+    distance: float
+    metadata: dict[str, Any]
+
+
+class SearchResponse(BaseModel):
+    query: str
+    k: int
+    search_time_ms: int
+    results: list[SearchResultItem]

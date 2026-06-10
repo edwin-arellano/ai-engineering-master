@@ -141,6 +141,17 @@ class Settings(BaseSettings):
         "v1", alias="CONTEXTUAL_RETRIEVAL_PROMPT_VERSION"
     )
 
+    # ---- Persistencia pgvector (pre-S08) ----
+    database_url: str = Field(
+        default="postgresql+asyncpg://estimator:estimator@localhost:5433/estimator",
+        alias="DATABASE_URL",
+        description=(
+            "DSN async (asyncpg) de Postgres. En local apunta a localhost:5433 "
+            "(host remapeado para no chocar con el Postgres de Herd en 5432). "
+            "En compose se sobreescribe a host 'postgres':5432 (red interna)."
+        ),
+    )
+
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"
     environment: str = "development"
