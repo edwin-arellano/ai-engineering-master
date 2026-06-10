@@ -143,9 +143,13 @@ class Settings(BaseSettings):
 
     # ---- Persistencia pgvector (pre-S08) ----
     database_url: str = Field(
-        default="postgresql+asyncpg://estimator:estimator@localhost:5432/estimator",
+        default="postgresql+asyncpg://estimator:estimator@localhost:5433/estimator",
         alias="DATABASE_URL",
-        description="DSN async (asyncpg) de Postgres. En compose se sobreescribe a host 'postgres'.",
+        description=(
+            "DSN async (asyncpg) de Postgres. En local apunta a localhost:5433 "
+            "(host remapeado para no chocar con el Postgres de Herd en 5432). "
+            "En compose se sobreescribe a host 'postgres':5432 (red interna)."
+        ),
     )
 
     # === Streamlit / runtime ===

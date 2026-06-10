@@ -15,7 +15,7 @@ config = context.config
 # URL desde el entorno: Alembic NO depende de Settings (no exige API keys para migrar).
 _database_url = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://estimator:estimator@localhost:5432/estimator",
+    "postgresql+asyncpg://estimator:estimator@localhost:5433/estimator",
 )
 config.set_main_option("sqlalchemy.url", _database_url)
 
