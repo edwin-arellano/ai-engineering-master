@@ -5,10 +5,14 @@ una API key de embeddings y el servidor levantado en localhost:8000.
 
 from __future__ import annotations
 
+import os
+
 import httpx
 import pytest
 
-BACKEND = "http://localhost:8000"
+# Backend configurable por entorno (default localhost:8000) para correr el test
+# contra un servidor en un puerto alternativo sin tocar el código.
+BACKEND = os.getenv("ESTIMATOR_BACKEND", "http://localhost:8000")
 
 _BUDGET = {
     "budget_id": "BUD-IT-001",
