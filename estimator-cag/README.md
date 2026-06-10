@@ -1239,3 +1239,43 @@ uv run pytest tests/generation/rag -m integration -q          # semantic + propo
 
 > **S08+**: persistencia en PostgreSQL + pgvector, retrieval / búsqueda semántica,
 > queries híbridas SQL+semántica, y anonimización PII con Presidio.
+
+## Persistencia en pgvector (pre-session-08)
+
+El pipeline de chunking/embeddings de S07 ahora persiste en PostgreSQL + pgvector y
+expone búsqueda semántica. La extensión `vector` y el esquema se gestionan con Alembic
+(migración `0001`). `POST /embeddings/ingest` persiste un presupuesto como un `document`
+con sus `chunks` (cada uno con su embedding) en una sola transacción; `POST /search`
+devuelve los k chunks más cercanos por distancia coseno.
+
+### Arranque
+
+```bash
+docker compose up -d postgres            # Postgres 16 con pgvector
+uv run alembic upgrade head              # crea extensión + tablas documents/chunks
+uv run uvicorn app.main:app              # versión 0.8.0; /docs
+uv run python -m scripts.ingest_corpus   # ingesta data/budgets_sample.json (idempotente)
+uv run python -m scripts.query_examples  # 5 queries → output_examples.txt
+```
+
+> Alembic y los scripts se ejecutan en local con `uv run`: la imagen del contenedor es
+> `--no-dev` y no incluye `alembic/`, `scripts/` ni `data/`.
+
+### Decisiones de esquema
+
+- **Dos tablas, no una.** Un presupuesto produce N chunks. Una tabla única duplicaría la
+  metadata del documento en cada fila y perdería integridad referencial. Con `documents`
+  (1) → `chunks` (N) y `ON DELETE CASCADE`, borrar un documento borra sus chunks sin lógica
+  aplicativa.
+- **`metadata` como JSONB.** La metadata estable y consultada de forma estructurada
+  (`document_type`, `chunk_type`, fechas) va en columnas tipadas; la metadata variable que
+  el chunker enriquece (sector, tecnologías, scope) va en JSONB con índice GIN, evitando una
+  migración por cada campo nuevo.
+- **`cosine_distance` (`<=>`), no L2 ni inner product.** Los embeddings de OpenAI están
+  normalizados (norma 1), así que coseno e inner product dan el mismo orden; usamos coseno
+  por convención de la literatura RAG y para que, si algún día migramos a un modelo que no
+  normaliza, la query siga siendo correcta sin cambios. El operador queda alineado con la
+  operator class `vector_cosine_ops` del índice que se añadirá en directo.
+- **Sin índice vectorial todavía.** Deliberado: la sesión en vivo mide la latencia de
+  `/search` sin índice, lo crea (HNSW con `vector_cosine_ops`) y vuelve a medir. Es la única
+  forma de aterrizar empíricamente el orden de magnitud que aporta el índice.
