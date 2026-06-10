@@ -11,10 +11,14 @@ services:
     environment:
       # Sobreescribe REDIS_URL del .env para usar la red interna de docker
       - REDIS_URL=redis://redis:6379/0
+      # Postgres por red interna de docker (igual patrón que REDIS_URL):
+      - DATABASE_URL=postgresql+asyncpg://estimator:estimator@postgres:5432/estimator
     volumes:
       - ./app:/app/app:ro
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     command: >
       uv run --no-sync uvicorn app.main:app
@@ -40,5 +44,24 @@ services:
       retries: 5
     restart: unless-stopped
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: estimator-postgres
+    environment:
+      POSTGRES_DB: estimator
+      POSTGRES_USER: estimator
+      POSTGRES_PASSWORD: estimator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estimator -d estimator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   redis-data:
+  postgres_data:
