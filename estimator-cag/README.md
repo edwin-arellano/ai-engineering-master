@@ -1365,3 +1365,52 @@ sequenceDiagram
 - **Sin índice vectorial todavía.** Deliberado: la sesión en vivo mide la latencia de
   `/search` sin índice, lo crea (HNSW con `vector_cosine_ops`) y vuelve a medir. Es la única
   forma de aterrizar empíricamente el orden de magnitud que aporta el índice.
+
+## Indexación HNSW y operación (session-08)
+
+Sobre la persistencia pgvector de pre-S08, esta sesión indexa el corpus, adopta **half-vec**
+y deja la base lista para retrieval (módulo 4). El foco es indexación y operación, no
+búsqueda avanzada (híbrida FTS+vector, filtros por metadata y re-ranking son módulo 4).
+
+### Flujo de la sesión
+
+```bash
+docker compose up -d postgres && uv run alembic upgrade head   # incluye el índice half-vec (0002)
+uv run python -m scripts.ingest_corpus                          # corpus real (vía HTTP /embeddings/ingest)
+uv run python -m scripts.seed_synthetic_chunks --total 30000    # ruido para que el índice se note
+uv run python -m scripts.measure_baseline --mode exact          # baseline seq scan (~122 ms)
+uv run python -m scripts.measure_baseline --mode indexed        # con índice (~4.5 ms, ~27×)
+uv run python -m scripts.tune_ef_search                         # punto dulce recall/latencia
+uv run python -m scripts.compare_index                          # float32 (235 MB) vs half-vec (117 MB)
+```
+
+Resultados reales y razonamiento en
+[`app/generation/rag/persistence/INDEX_REPORT.md`](app/generation/rag/persistence/INDEX_REPORT.md).
+Los scripts de medición son DB-directos (no clientes HTTP): embeben las queries una vez y
+cronometran solo la parte SQL, aislando el efecto del índice de la latencia del embedder.
+
+### Decisiones
+
+- **HNSW half-vec** (`chunks_embedding_halfvec_idx`, `halfvec_cosine_ops`, m=16, ef_construction=128):
+  float16 reduce el índice a la mitad (235 → 117 MB) sin pérdida de recall en vectores
+  normalizados de OpenAI. Es el índice adoptado y migrado (0002); el float32 solo se
+  crea/dropea ad-hoc en `compare_index.py`.
+- **Operador alineado.** `search_chunks` castea `embedding` y la query a `halfvec(1536)` y usa
+  `<=>`, expresión idéntica a la del índice. Desalinear → fallback silencioso a seq scan; se
+  verifica con `EXPLAIN ANALYZE` (test `test_hnsw_index_scan.py`).
+- **`ef_search`** (query-time, `HNSW_EF_SEARCH`, default 40): único parámetro de runtime del
+  HNSW; aplicado con `SET LOCAL` en la transacción de la request. Punto dulce recall/latencia
+  (recall ~1.0); sube con el volumen del corpus.
+- **Operación**: `app/generation/rag/persistence/monitoring.sql` (salud de tabla, tamaños de
+  índices, uso, `ANALYZE`/`VACUUM`/`REINDEX CONCURRENTLY`). En producción,
+  `CREATE INDEX CONCURRENTLY` + `maintenance_work_mem` en ventanas de bajo tráfico (runbook
+  documentado en el mismo `.sql`, no en la migración: `CONCURRENTLY` no cabe en la transacción
+  de Alembic).
+
+### Variables de entorno nuevas
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `HNSW_M` | `16` | Conexiones por nodo del grafo HNSW (build-time; coincide con la migración 0002). |
+| `HNSW_EF_CONSTRUCTION` | `128` | Tamaño de la lista de candidatos al construir el índice (build-time). |
+| `HNSW_EF_SEARCH` | `40` | Candidatos explorados en query-time. Balancea recall/latencia. |
