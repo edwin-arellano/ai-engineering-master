@@ -152,6 +152,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ---- RAG índice vectorial (S08) ----
+    # Parámetros HNSW. m y ef_construction son build-time (deben coincidir con la
+    # migración 0002, que los hardcodea). ef_search es query-time: el punto dulce
+    # recall/latencia que mide tune_ef_search.py y aplica search_chunks con SET LOCAL.
+    hnsw_m: int = Field(default=16, alias="HNSW_M")
+    hnsw_ef_construction: int = Field(default=128, alias="HNSW_EF_CONSTRUCTION")
+    hnsw_ef_search: int = Field(default=40, alias="HNSW_EF_SEARCH")
+
     # === Streamlit / runtime ===
     backend_url: str = "http://localhost:8000"
     environment: str = "development"

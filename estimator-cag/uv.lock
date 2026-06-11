@@ -477,6 +477,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "alembic" },
+    { name = "numpy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "reportlab" },
@@ -516,6 +517,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "alembic", specifier = ">=1.13" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "reportlab", specifier = ">=4.5.1" },
