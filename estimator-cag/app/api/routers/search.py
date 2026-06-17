@@ -1,7 +1,8 @@
 """Búsqueda semántica: embebe la query con el MISMO modelo que la ingesta
 (text-embedding-3-small) y devuelve los k chunks más cercanos por distancia coseno.
-Operador `<=>` (cosine_distance) alineado con la operator class `vector_cosine_ops`
-que el directo usará al crear el índice HNSW.
+La búsqueda usa el índice HNSW half-vec (ver repository._build_halfvec_search_stmt):
+operador `<=>` alineado con `halfvec_cosine_ops`. `ef_search` (HNSW_EF_SEARCH) ajusta
+el balance recall/latencia y se pasa desde settings.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.foundations.config import get_settings
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from app.generation.rag.persistence.database import get_db_session
 from app.generation.rag.persistence.repository import search_chunks
@@ -35,7 +37,12 @@ async def search(
         logger.exception("search.embed_failed")
         raise HTTPException(status_code=500, detail="Error embebiendo la query")
 
-    rows = await search_chunks(session, query_vector=query_vector, k=request.k)
+    rows = await search_chunks(
+        session,
+        query_vector=query_vector,
+        k=request.k,
+        ef_search=get_settings().hnsw_ef_search,
+    )
     elapsed_ms = round((time.perf_counter() - started) * 1000)
 
     results = [

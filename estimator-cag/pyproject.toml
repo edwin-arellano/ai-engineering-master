@@ -35,6 +35,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "alembic>=1.13",
+    "numpy>=2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24",
     "reportlab>=4.5.1",

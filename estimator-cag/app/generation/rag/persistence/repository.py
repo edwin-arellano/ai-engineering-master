@@ -8,11 +8,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from pgvector.sqlalchemy import HALFVEC
+from sqlalchemy import cast, select, text
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.generation.rag.persistence.models import ChunkRow, DocumentRow
+from app.generation.rag.persistence.models import EMBEDDING_DIM, ChunkRow, DocumentRow
 from app.generation.rag.schemas import EmbeddedChunk
 
 # Tipo de chunk para chunking estructural: un componente de presupuesto = un chunk.
@@ -64,18 +65,18 @@ async def ingest_document(
     return document.id, len(rows)
 
 
-async def search_chunks(
-    session: AsyncSession,
-    *,
-    query_vector: list[float],
-    k: int,
-) -> list[Row]:
-    """Top-k chunks por distancia coseno. NO proyecta la columna `embedding`
-    (solo la distancia, calculada en servidor) — evita el decode del tipo vector
-    en asyncpg y reduce el payload. Sequential scan: aún no hay índice (eso es el directo).
+def _build_halfvec_search_stmt(query_vector: list[float], k: int):
+    """Statement alineado con el índice HNSW half-vec (chunks_embedding_halfvec_idx).
+
+    La expresión `embedding::halfvec(1536) <=> :q` debe ser IDÉNTICA a la indexada
+    para que el planner use el índice: el cast a `halfvec(1536)` reproduce la
+    expresión del índice y el operador `<=>` (cosine_distance) coincide con su
+    operator class `halfvec_cosine_ops`. Desalinear cualquiera de los dos → Postgres
+    cae a seq scan sin avisar (se verifica con EXPLAIN ANALYZE). NO proyecta `embedding`.
     """
-    distance = ChunkRow.embedding.cosine_distance(query_vector)
-    stmt = (
+    half_col = cast(ChunkRow.embedding, HALFVEC(EMBEDDING_DIM))
+    distance = half_col.cosine_distance(query_vector)
+    return (
         select(
             ChunkRow.id.label("chunk_id"),
             ChunkRow.document_id.label("document_id"),
@@ -87,5 +88,54 @@ async def search_chunks(
         .order_by(distance)
         .limit(k)
     )
-    result = await session.execute(stmt)
+
+
+async def search_chunks(
+    session: AsyncSession,
+    *,
+    query_vector: list[float],
+    k: int,
+    ef_search: int | None = None,
+) -> list[Row]:
+    """Top-k chunks por distancia coseno usando el índice HNSW half-vec.
+
+    `ef_search` (parámetro query-time del HNSW) balancea recall/latencia; se aplica
+    con SET LOCAL para acotarlo a la transacción de esta request (no contamina otras
+    conexiones del pool). NO proyecta la columna `embedding` (solo la distancia,
+    calculada en servidor) — evita el decode del tipo vector en asyncpg.
+    """
+    if ef_search is not None:
+        # SET no admite bind params para el valor; interpolamos un int validado.
+        await session.execute(text(f"SET LOCAL hnsw.ef_search = {int(ef_search)}"))
+    result = await session.execute(_build_halfvec_search_stmt(query_vector, k))
+    return list(result.all())
+
+
+def _build_exact_search_stmt(query_vector: list[float], k: int):
+    """Statement exacto (plain Vector, sin cast): top-k por fuerza bruta. Ground
+    truth para medir el recall@k del índice HNSW aproximado."""
+    distance = ChunkRow.embedding.cosine_distance(query_vector)
+    return (
+        select(
+            ChunkRow.id.label("chunk_id"),
+            ChunkRow.document_id.label("document_id"),
+            ChunkRow.chunk_type.label("chunk_type"),
+            ChunkRow.content.label("content"),
+            ChunkRow.metadata_.label("metadata"),
+            distance.label("distance"),
+        )
+        .order_by(distance)
+        .limit(k)
+    )
+
+
+async def search_chunks_exact(
+    session: AsyncSession, *, query_vector: list[float], k: int
+) -> list[Row]:
+    """Top-k exacto por fuerza bruta (seq scan). Ground truth para medir el recall
+    del índice HNSW. Desactiva index/bitmap scan por si existiera un índice vectorial,
+    forzando el recorrido secuencial sobre todos los vectores."""
+    await session.execute(text("SET LOCAL enable_indexscan = off"))
+    await session.execute(text("SET LOCAL enable_bitmapscan = off"))
+    result = await session.execute(_build_exact_search_stmt(query_vector, k))
     return list(result.all())
