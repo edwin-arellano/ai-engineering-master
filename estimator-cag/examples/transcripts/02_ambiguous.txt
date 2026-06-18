@@ -1,0 +1,27 @@
+Bueno, a ver, gracias por hacer el hueco. Te cuento un poco la situación porque la verdad
+es que es un lío y no sé ni por dónde empezar. Llevamos ya como doce años con el negocio,
+empezamos muy pequeñitos mi cuñado y yo, y ahora somos un equipo de treinta y tantas
+personas entre la tienda física, el almacén y la gente que lleva los pedidos. El problema
+es que cada uno tiene su Excel: la de compras el suyo, el de almacén otro, y al final
+nadie sabe qué stock hay de verdad. La semana pasada vendimos algo que no teníamos y fue
+un marrón con el cliente, tuvimos que devolver el dinero y encima nos pusieron una reseña
+mala.
+
+Yo lo que quiero es algo que junte todo eso. Una herramienta, una app, lo que sea. Que
+cuando entre un pedido se descuente solo del stock y que yo pueda ver desde el móvil cómo
+va todo sin llamar a tres personas. Mi sobrino, que estudia informática, dice que esto se
+hace con una base de datos y ya, que es fácil, pero yo de eso no entiendo nada.
+
+También están las facturas, que es otro tema: ahora las hacemos a mano en un Word y luego
+las pasamos al gestor. Eso a lo mejor se podría meter ahí también. Y los clientes
+habituales, que son los que nos dan de comer, me gustaría tener una ficha de cada uno para
+ver qué compran y cada cuánto, y llamarles cuando sale algo que les interese.
+
+Lo de la tienda online lo dejamos aparcado, ya lo intentamos con una plataforma de esas y
+fue un desastre, así que de momento ni lo menciones. Aunque si más adelante se puede
+conectar, mejor.
+
+¿Cuánto puede costar algo así? Tampoco quiero gastarme una millonada, somos pequeños. Y
+sobre todo necesito que sea rápido, porque la campaña de navidad está a la vuelta de la
+esquina. Mi sobrino habló de hacerlo con Python o algo así, pero me fío de lo que me digas
+tú. Lo importante es quitarme el lío de los Excel y poder dormir tranquilo.
