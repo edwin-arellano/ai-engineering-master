@@ -1414,3 +1414,50 @@ cronometran solo la parte SQL, aislando el efecto del índice de la latencia del
 | `HNSW_M` | `16` | Conexiones por nodo del grafo HNSW (build-time; coincide con la migración 0002). |
 | `HNSW_EF_CONSTRUCTION` | `128` | Tamaño de la lista de candidatos al construir el índice (build-time). |
 | `HNSW_EF_SEARCH` | `40` | Candidatos explorados en query-time. Balancea recall/latencia. |
+
+## Diagnóstico arquitectónico (pre-session-09)
+
+Ejercicio de **diagnóstico** (S9-01), no implementación: mapea el estado del servicio IA al
+cierre de S06–S08 y propone hacia dónde evolucionar. El entregable es
+[`arquitectura-actual.md`](arquitectura-actual.md), con cuatro secciones (arquitectura actual,
+trace anotado real, cinco fallos y propuesta de evolución). `app/` no cambia; el único Python
+nuevo es el cliente del trace.
+
+### Flujo del trace
+
+```bash
+docker compose up -d postgres && uv run alembic upgrade head
+uv run python -m scripts.ingest_corpus                          # corpus real (15 budgets ≈ 33 chunks)
+# borrar el seed sintético de S08 para no contaminar el top-5 del trace:
+docker compose exec -T postgres psql -U estimator -d estimator \
+  -c "DELETE FROM documents WHERE source_path = 'synthetic/stress-corpus';"
+uv run uvicorn app.main:app                                     # v0.8.0
+uv run python -m scripts.trace_pre_s09 \
+  --transcript examples/transcripts/02_ambiguous.txt \
+  --out examples/transcripts/trace_02_ambiguous.out.txt
+```
+
+`scripts/trace_pre_s09.py` (único Python del ejercicio) embebe la transcripción con
+`LiteLLMEmbedder` (dim/norma/componentes) y hace `POST /search {query, k}` contra el servicio
+S08, volcando la respuesta cruda a `examples/transcripts/trace_02_ambiguous.out.txt`.
+
+### Hallazgo central
+
+Contra el corpus real (33 chunks), la transcripción ambigua devuelve un top-5 con distancias
+**comprimidas y altas** (0.5851–0.6325, spread 0.047): el índice ordena pero no discrimina. La
+mejor coincidencia es "Cart and checkout service" de una tienda e-commerce — **justo lo que el
+cliente pidió no mencionar**. De ahí salen los cinco fallos (vector promediado, negación
+ignorada, asimetría query↔chunk ES/EN, **dos islas** store↔estimación, retrieval sin filtros) y
+la propuesta de evolución, cuya pieza crítica es el **puente Augmentation→Generación**.
+
+### Material
+
+- `examples/transcripts/{01_clear,02_ambiguous,03_hard}.txt` — transcripciones de cliente (ES).
+- `examples/transcripts/trace_02_ambiguous.out.txt` — salida cruda capturada del trace.
+- `TEMPLATE.md` — estructura del entregable.
+- `arquitectura-actual.md` — el diagnóstico (entregable).
+
+### Fuera de alcance (módulo 4 / S09 en directo)
+
+Reformulación de queries, reranking, nuevo retriever, módulo de generación, endpoints nuevos o
+modificar `/search`. El ejercicio es diagnóstico; la implementación viene después.
