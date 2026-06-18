@@ -1,0 +1,148 @@
+================================================================================
+[1] EMBEDDING de examples/transcripts/02_ambiguous.txt  (chars=1853)
+--------------------------------------------------------------------------------
+  dim          = 1536
+  L2 norm      = 1.000047
+  first comp.  = 0.018433
+  last comp.   = 0.008469
+  (observación: vector único 'promedio' de un texto largo y ambiguo)
+
+================================================================================
+[2] POST http://localhost:8000/search  {query: <transcripción>, k: 5}
+--------------------------------------------------------------------------------
+  search_time_ms = 771
+
+  --- hit 1 ---
+    chunk_id    = 10   document_id = 5
+    distance    = 0.5851
+    chunk_type  = budget_component
+    budget_id   = BUD-2024-005   sector = ecommerce   tech = node_js
+    content[:160] = [Project: Headless e-commerce storefront with personalization] [Client sector: ecommerce | Year: 2024 | Main tech: node_js]  Component: Cart and checkout servic
+
+  --- hit 2 ---
+    chunk_id    = 17   document_id = 8
+    distance    = 0.6206
+    chunk_type  = budget_component
+    budget_id   = BUD-2024-008   sector = ecommerce   tech = python
+    content[:160] = [Project: Fashion returns automation and resale] [Client sector: ecommerce | Year: 2024 | Main tech: python]  Component: Returns automation Description: Self-se
+
+  --- hit 3 ---
+    chunk_id    = 27   document_id = 13
+    distance    = 0.6248
+    chunk_type  = budget_component
+    budget_id   = BUD-2024-013   sector = industrial   tech = java
+    content[:160] = [Project: Warehouse management and slotting] [Client sector: industrial | Year: 2024 | Main tech: java]  Component: Warehouse management core Description: Inbou
+
+  --- hit 4 ---
+    chunk_id    = 16   document_id = 7
+    distance    = 0.6322
+    chunk_type  = budget_component
+    budget_id   = BUD-2024-007   sector = ecommerce   tech = node_js
+    content[:160] = [Project: Grocery delivery slot booking and routing] [Client sector: ecommerce | Year: 2024 | Main tech: node_js]  Component: Route optimization Description: He
+
+  --- hit 5 ---
+    chunk_id    = 28   document_id = 13
+    distance    = 0.6325
+    chunk_type  = budget_component
+    budget_id   = BUD-2024-013   sector = industrial   tech = java
+    content[:160] = [Project: Warehouse management and slotting] [Client sector: industrial | Year: 2024 | Main tech: java]  Component: Dynamic slotting Description: Velocity-based
+
+================================================================================
+[raw JSON]
+{
+  "query": "Bueno, a ver, gracias por hacer el hueco. Te cuento un poco la situación porque la verdad\nes que es un lío y no sé ni por dónde empezar. Llevamos ya como doce años con el negocio,\nempezamos muy pequeñitos mi cuñado y yo, y ahora somos un equipo de treinta y tantas\npersonas entre la tienda física, el almacén y la gente que lleva los pedidos. El problema\nes que cada uno tiene su Excel: la de compras el suyo, el de almacén otro, y al final\nnadie sabe qué stock hay de verdad. La semana pasada vendimos algo que no teníamos y fue\nun marrón con el cliente, tuvimos que devolver el dinero y encima nos pusieron una reseña\nmala.\n\nYo lo que quiero es algo que junte todo eso. Una herramienta, una app, lo que sea. Que\ncuando entre un pedido se descuente solo del stock y que yo pueda ver desde el móvil cómo\nva todo sin llamar a tres personas. Mi sobrino, que estudia informática, dice que esto se\nhace con una base de datos y ya, que es fácil, pero yo de eso no entiendo nada.\n\nTambién están las facturas, que es otro tema: ahora las hacemos a mano en un Word y luego\nlas pasamos al gestor. Eso a lo mejor se podría meter ahí también. Y los clientes\nhabituales, que son los que nos dan de comer, me gustaría tener una ficha de cada uno para\nver qué compran y cada cuánto, y llamarles cuando sale algo que les interese.\n\nLo de la tienda online lo dejamos aparcado, ya lo intentamos con una plataforma de esas y\nfue un desastre, así que de momento ni lo menciones. Aunque si más adelante se puede\nconectar, mejor.\n\n¿Cuánto puede costar algo así? Tampoco quiero gastarme una millonada, somos pequeños. Y\nsobre todo necesito que sea rápido, porque la campaña de navidad está a la vuelta de la\nesquina. Mi sobrino habló de hacerlo con Python o algo así, pero me fío de lo que me digas\ntú. Lo importante es quitarme el lío de los Excel y poder dormir tranquilo.\n",
+  "k": 5,
+  "search_time_ms": 771,
+  "results": [
+    {
+      "chunk_id": 10,
+      "document_id": 5,
+      "chunk_type": "budget_component",
+      "content": "[Project: Headless e-commerce storefront with personalization]\n[Client sector: ecommerce | Year: 2024 | Main tech: node_js]\n\nComponent: Cart and checkout service\nDescription: Server-side cart, multi-currency checkout and inventory reservation with timeout release.\nTech stack: node_js, postgresql, redis\nComplexity: medium\nEstimated hours: 110",
+      "distance": 0.5851,
+      "metadata": {
+        "year": 2024,
+        "chunk_id": "BUD-2024-005::CART-001",
+        "strategy": "structural",
+        "budget_id": "BUD-2024-005",
+        "complexity": "medium",
+        "component_id": "CART-001",
+        "client_sector": "ecommerce",
+        "estimated_hours": 110,
+        "main_technology": "node_js"
+      }
+    },
+    {
+      "chunk_id": 17,
+      "document_id": 8,
+      "chunk_type": "budget_component",
+      "content": "[Project: Fashion returns automation and resale]\n[Client sector: ecommerce | Year: 2024 | Main tech: python]\n\nComponent: Returns automation\nDescription: Self-service returns with label generation and refund orchestration.\nTech stack: python, postgresql\nComplexity: low\nEstimated hours: 80",
+      "distance": 0.6206,
+      "metadata": {
+        "year": 2024,
+        "chunk_id": "BUD-2024-008::RET-001",
+        "strategy": "structural",
+        "budget_id": "BUD-2024-008",
+        "complexity": "low",
+        "component_id": "RET-001",
+        "client_sector": "ecommerce",
+        "estimated_hours": 80,
+        "main_technology": "python"
+      }
+    },
+    {
+      "chunk_id": 27,
+      "document_id": 13,
+      "chunk_type": "budget_component",
+      "content": "[Project: Warehouse management and slotting]\n[Client sector: industrial | Year: 2024 | Main tech: java]\n\nComponent: Warehouse management core\nDescription: Inbound/outbound flows, putaway and pick-path generation.\nTech stack: java, postgresql\nComplexity: high\nEstimated hours: 150",
+      "distance": 0.6248,
+      "metadata": {
+        "year": 2024,
+        "chunk_id": "BUD-2024-013::WMS-001",
+        "strategy": "structural",
+        "budget_id": "BUD-2024-013",
+        "complexity": "high",
+        "component_id": "WMS-001",
+        "client_sector": "industrial",
+        "estimated_hours": 150,
+        "main_technology": "java"
+      }
+    },
+    {
+      "chunk_id": 16,
+      "document_id": 7,
+      "chunk_type": "budget_component",
+      "content": "[Project: Grocery delivery slot booking and routing]\n[Client sector: ecommerce | Year: 2024 | Main tech: node_js]\n\nComponent: Route optimization\nDescription: Heuristic vehicle routing for same-day grocery deliveries.\nTech stack: python\nComplexity: high\nEstimated hours: 120",
+      "distance": 0.6322,
+      "metadata": {
+        "year": 2024,
+        "chunk_id": "BUD-2024-007::ROUTE-002",
+        "strategy": "structural",
+        "budget_id": "BUD-2024-007",
+        "complexity": "high",
+        "component_id": "ROUTE-002",
+        "client_sector": "ecommerce",
+        "estimated_hours": 120,
+        "main_technology": "node_js"
+      }
+    },
+    {
+      "chunk_id": 28,
+      "document_id": 13,
+      "chunk_type": "budget_component",
+      "content": "[Project: Warehouse management and slotting]\n[Client sector: industrial | Year: 2024 | Main tech: java]\n\nComponent: Dynamic slotting\nDescription: Velocity-based slotting recommendations recomputed nightly.\nTech stack: python\nComplexity: medium\nEstimated hours: 85",
+      "distance": 0.6325,
+      "metadata": {
+        "year": 2024,
+        "chunk_id": "BUD-2024-013::SLOT-002",
+        "strategy": "structural",
+        "budget_id": "BUD-2024-013",
+        "complexity": "medium",
+        "component_id": "SLOT-002",
+        "client_sector": "industrial",
+        "estimated_hours": 85,
+        "main_technology": "java"
+      }
+    }
+  ]
+}
