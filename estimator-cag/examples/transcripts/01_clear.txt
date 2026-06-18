@@ -1,0 +1,9 @@
+Hola, gracias por recibirnos. Te resumo lo que necesitamos porque lo tenemos bastante
+claro. Somos una fintech y vamos a lanzar una API de banca móvil. Lo crítico es la
+autenticación: necesitamos OAuth 2.0 con gestión de tokens JWT, aislamiento de tokens
+por cliente en un entorno multi-tenant y rate limiting por cliente. Además, como operamos
+en la UE, tenemos que cumplir PSD2: autenticación reforzada de cliente (SCA) y gestión de
+consentimientos. Por debajo iría un servicio de ledger transaccional con doble entrada e
+idempotencia en el posteo de transacciones. El stack es Ruby on Rails con PostgreSQL y
+Redis. El sector es financiero y regulado. ¿Cuánto nos costaría y en cuánto tiempo lo
+tendríamos listo?
