@@ -49,6 +49,21 @@ class Settings(BaseSettings):
     rag_estimation_prompt_version: str = Field(default="v1", alias="RAG_ESTIMATION_PROMPT_VERSION")
     reformulation_prompt_version: str = Field(default="v1", alias="REFORMULATION_PROMPT_VERSION")
 
+    # === Retrieval avanzado (S10): híbrida + reranking ===
+    rag_search_mode: str = Field(
+        default="vector", alias="RAG_SEARCH_MODE",
+        description="Modo por defecto: vector | hybrid.",
+    )
+    reranking_enabled: bool = Field(default=False, alias="RERANKING_ENABLED")
+    reranker_model_name: str = Field(
+        default="BAAI/bge-reranker-v2-m3", alias="RERANKER_MODEL_NAME"
+    )
+    retrieval_candidate_pool_size: int = Field(
+        default=50, alias="RETRIEVAL_CANDIDATE_POOL_SIZE",
+        description="Recall amplio antes del reranking (recall-then-rerank).",
+    )
+    rrf_smoothing_k: int = Field(default=60, alias="RRF_SMOOTHING_K")
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
