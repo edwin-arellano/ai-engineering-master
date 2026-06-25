@@ -1461,3 +1461,51 @@ la propuesta de evolución, cuya pieza crítica es el **puente Augmentation→Ge
 
 Reformulación de queries, reranking, nuevo retriever, módulo de generación, endpoints nuevos o
 modificar `/search`. El ejercicio es diagnóstico; la implementación viene después.
+
+## Flujo RAG end-to-end (S09)
+
+A partir de S09 el servicio cierra el bucle de las "dos islas" (store ↔ estimación)
+con un pipeline RAG de cinco fases, expuesto en `POST /api/v1/estimate-from-transcript`.
+Coexiste con el flujo CAG conversacional (`/api/v1/sessions/{id}/estimate`), que no cambia.
+
+### Las cinco fases
+
+1. **Reformulación** (`retrieval/reformulation.py`). Un LLM barato (alias `reformulator`)
+   convierte la transcripción ruidosa de una reunión de alcance en un brief tipado
+   (`ReformulatedQuery`): función del proyecto, tecnologías, sector, escala, constraints
+   y un `search_text` corto y denso. El brief ya razona en términos de los metadatos del store.
+
+2. **Retrieval** (`retrieval/retriever.py`). Sin LLM. Embede el `search_text` y recupera
+   top-k chunks por distancia coseno (HNSW half-vec) sobre tres ejes: `top_k`,
+   `distance_threshold` y **filtros de metadata deterministas** (sector, año, tecnología,
+   chunk_type). Los filtros son SQL puro (`WHERE` sobre columnas y JSONB), nunca prompting.
+
+3. **Augmentation** (`retrieval/augmentation.py`). Ensambla los chunks dispersos en un
+   `context_block` acotado por presupuesto de tokens, etiquetando cada bloque con su
+   `source_id` para habilitar trazabilidad. (No enriquece con fuentes externas todavía.)
+
+4. **Generación** (`retrieval/generation.py`). Un LLM potente (alias `estimator`) produce
+   un `RagEstimate` con módulos, desglose de tareas, **citations** a los `source_id` y un
+   `confidence` ∈ {high, medium, low, insufficient}, basándose **solo** en el contexto.
+
+5. **Verificación** (`retrieval/verification.py`). Valida que las citations existan entre
+   los chunks recuperados (no inventadas) y la coherencia de la confianza (insufficient ⇒
+   sin totales). Reforzado por los `model_validator` de `RagEstimate`.
+
+### Doble eje de chunking
+
+El corpus se indexa en dos `chunk_type`: `budget_component` (componente completo, overview)
+e `historical_task` (tarea atómica, detalle). El mismo dato indexado de dos formas mejora
+el retrieval según la fase. Re-ingesta con `uv run python -m scripts.reingest_with_tasks`.
+
+### Modelo por fase
+
+El Router de LiteLLM expone dos modelos lógicos configurables por entorno:
+`reformulator` (barato, p.ej. gpt-4o-mini) y `estimator` (potente, p.ej. Haiku),
+cada uno con su primary y fallback. Cada fase pide el alias que necesita.
+
+### Fuera de scope (sesiones siguientes)
+
+Búsqueda híbrida, re-ranking, reformulación multi-query, flujo invertido CAG↔RAG con
+agentes, augmentation con fuentes externas y securización operativa del retriever
+(rate-limiting, claves, VPC, caché semántica de idempotencia).
