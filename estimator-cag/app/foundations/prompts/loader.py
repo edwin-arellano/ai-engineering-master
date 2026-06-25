@@ -176,6 +176,24 @@ def render_contextual_retrieval_prompt(version: str = "v1") -> str:
     return system_template.render()
 
 
+def render_reformulation_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt de la fase de reformulación RAG (S09).
+
+    Solo system: el user message es la transcripción completa (ver
+    ``app.generation.rag.retrieval.reformulation``).
+    """
+    return _env.get_template(f"reformulation/{version}/system.j2").render()
+
+
+def render_rag_estimation_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt de la generación RAG-grounded (S09).
+
+    Solo system: el user message lleva el brief + los context_blocks (ver
+    ``app.generation.rag.retrieval.generation``).
+    """
+    return _env.get_template(f"rag_estimation/{version}/system.j2").render()
+
+
 def render_summarizer_prompt(
     *,
     transcript_block: str,

@@ -26,6 +26,29 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4000
 
+    # === Reformulator (modelo barato para la fase de reformulación, S09) ===
+    reformulator_primary_model: str = Field(
+        default="openai/gpt-4o-mini", alias="REFORMULATOR_PRIMARY_MODEL"
+    )
+    reformulator_fallback_model: str = Field(
+        default="anthropic/claude-haiku-4-5-20251001", alias="REFORMULATOR_FALLBACK_MODEL"
+    )
+    reformulator_temperature: float = Field(default=0.0, alias="REFORMULATOR_TEMPERATURE")
+    reformulator_max_tokens: int = Field(default=1200, alias="REFORMULATOR_MAX_TOKENS")
+
+    # === Retrieval RAG (S09) ===
+    rag_top_k: int = Field(
+        default=25, alias="RAG_TOP_K",
+        description="top_k de la estimación en una pasada (alto a propósito; ver notas).",
+    )
+    rag_distance_threshold: float = Field(default=0.6, alias="RAG_DISTANCE_THRESHOLD")
+    rag_max_context_tokens: int = Field(default=16384, alias="RAG_MAX_CONTEXT_TOKENS")
+    # Generación RAG-grounded: razonamiento "alto" modelado con temperatura baja + más tokens.
+    rag_generation_temperature: float = Field(default=0.2, alias="RAG_GENERATION_TEMPERATURE")
+    rag_generation_max_tokens: int = Field(default=8000, alias="RAG_GENERATION_MAX_TOKENS")
+    rag_estimation_prompt_version: str = Field(default="v1", alias="RAG_ESTIMATION_PROMPT_VERSION")
+    reformulation_prompt_version: str = Field(default="v1", alias="REFORMULATION_PROMPT_VERSION")
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None

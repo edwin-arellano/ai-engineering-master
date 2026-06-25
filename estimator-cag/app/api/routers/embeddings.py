@@ -21,6 +21,8 @@ from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from app.generation.rag.persistence.database import get_db_session
 from app.generation.rag.persistence.models import EMBEDDING_DIM
 from app.generation.rag.persistence.repository import (
+    BUDGET_COMPONENT,
+    HISTORICAL_TASK,
     get_document_id_by_source_path,
     ingest_document,
 )
@@ -32,6 +34,12 @@ from app.generation.rag.schemas import (
 
 logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
+
+# Mapea la estrategia de chunking solicitada al chunk_type que se persiste (S09).
+_STRATEGY_TO_CHUNK_TYPE = {
+    "structural": BUDGET_COMPONENT,
+    "historical_task": HISTORICAL_TASK,
+}
 
 
 def _build_document_metadata(budget: Budget, document_type: str) -> dict[str, Any]:
@@ -74,8 +82,17 @@ async def ingest(
             detail=f"`content` no es un Budget válido: {exc.errors()}",
         )
 
-    # 3. chunking estructural (huérfanos fuera: no los vectorizamos)
-    chunker = build_chunker("structural")
+    # 3. chunking según la estrategia pedida (huérfanos fuera: no los vectorizamos)
+    chunk_type = _STRATEGY_TO_CHUNK_TYPE.get(request.chunk_strategy)
+    if chunk_type is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"chunk_strategy no soportada para ingesta: '{request.chunk_strategy}'. "
+                f"Válidas: {sorted(_STRATEGY_TO_CHUNK_TYPE)}"
+            ),
+        )
+    chunker = build_chunker(request.chunk_strategy)
     chunks = [c for c in chunker.chunk([budget]) if not c.is_orphan]
 
     # 4. embeddings por lotes (embedder bloqueante → thread)
@@ -94,6 +111,7 @@ async def ingest(
         document_type=request.document_type,
         document_metadata=document_metadata,
         embedded_chunks=embedded,
+        chunk_type=chunk_type,
     )
 
     dimension = len(embedded[0].embedding) if embedded else EMBEDDING_DIM

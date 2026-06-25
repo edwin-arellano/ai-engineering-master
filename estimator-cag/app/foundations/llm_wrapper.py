@@ -27,10 +27,11 @@ logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
 
-# Etiqueta única que usamos en el Router para identificar nuestro "modelo
-# lógico". El Router resuelve esta etiqueta a primary_model y, si falla, a
-# fallback_model, en este orden.
-ROUTER_ALIAS = "estimator"
+# Etiquetas de los "modelos lógicos" del Router. Cada alias resuelve a su
+# primary_model y, si falla, a su fallback_model. Modelamos "modelo por fase"
+# (S09): `reformulator` (barato, reformulación) y `estimator` (potente, generación).
+REFORMULATOR_ALIAS = "reformulator"
+ESTIMATOR_ALIAS = "estimator"
 
 
 def _parse_provider(model_name: str) -> str:
@@ -40,49 +41,40 @@ def _parse_provider(model_name: str) -> str:
     return "openai"
 
 
+def _deployment(model_name: str, settings: Settings, model: str) -> dict:
+    """Construye un deployment del Router resolviendo la API key por proveedor."""
+    provider = _parse_provider(model)
+    return {
+        "model_name": model_name,
+        "litellm_params": {
+            "model": model,
+            "api_key": (
+                settings.anthropic_api_key
+                if provider == "anthropic"
+                else settings.openai_api_key
+            ),
+            "timeout": settings.llm_timeout_seconds,
+        },
+    }
+
+
 def _build_router(settings: Settings) -> Router:
-    """Construye el Router con primary + fallback bajo la misma alias."""
-    deployments = []
-
-    # Primary
-    primary_provider = _parse_provider(settings.primary_model)
-    deployments.append(
-        {
-            "model_name": ROUTER_ALIAS,
-            "litellm_params": {
-                "model": settings.primary_model,
-                "api_key": (
-                    settings.anthropic_api_key
-                    if primary_provider == "anthropic"
-                    else settings.openai_api_key
-                ),
-                "timeout": settings.llm_timeout_seconds,
-            },
-        }
-    )
-
-    # Fallback
-    fallback_provider = _parse_provider(settings.fallback_model)
-    deployments.append(
-        {
-            "model_name": ROUTER_ALIAS,
-            "litellm_params": {
-                "model": settings.fallback_model,
-                "api_key": (
-                    settings.anthropic_api_key
-                    if fallback_provider == "anthropic"
-                    else settings.openai_api_key
-                ),
-                "timeout": settings.llm_timeout_seconds,
-            },
-        }
-    )
-
+    """Router con dos modelos lógicos: reformulator (barato) y estimator (potente).
+    Cada uno con su primary y su fallback bajo el mismo model_name."""
+    deployments = [
+        _deployment(ESTIMATOR_ALIAS, settings, settings.primary_model),
+        _deployment(ESTIMATOR_ALIAS, settings, settings.fallback_model),
+        _deployment(REFORMULATOR_ALIAS, settings, settings.reformulator_primary_model),
+        _deployment(REFORMULATOR_ALIAS, settings, settings.reformulator_fallback_model),
+    ]
     return Router(
         model_list=deployments,
         num_retries=settings.llm_num_retries,
         timeout=settings.llm_timeout_seconds,
-        fallbacks=[{ROUTER_ALIAS: [ROUTER_ALIAS]}],
+        fallbacks=[
+            {ESTIMATOR_ALIAS: [ESTIMATOR_ALIAS]},
+            {REFORMULATOR_ALIAS: [REFORMULATOR_ALIAS]},
+        ],
         routing_strategy="simple-shuffle",
     )
 
@@ -107,6 +99,7 @@ class LLMWrapper:
         system_prompt: str,
         user_message: str,
         response_model: type[T],
+        alias: str = ESTIMATOR_ALIAS,
         max_tokens: int = 4000,
         temperature: float = 0.3,
         max_retries: int = 3,
@@ -136,7 +129,7 @@ class LLMWrapper:
             # efectivo que respondió), que Instructor descarta en `create`.
             result, completion = (
                 self._structured_client.chat.completions.create_with_completion(
-                    model=ROUTER_ALIAS,
+                    model=alias,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message},
@@ -176,6 +169,7 @@ class LLMWrapper:
         *,
         messages: list[dict[str, str]],
         response_model: type[T],
+        alias: str = ESTIMATOR_ALIAS,
         max_tokens: int = 4000,
         temperature: float = 0.3,
         max_retries: int = 3,
@@ -201,7 +195,7 @@ class LLMWrapper:
         try:
             result, completion = (
                 self._structured_client.chat.completions.create_with_completion(
-                    model=ROUTER_ALIAS,
+                    model=alias,
                     messages=messages,
                     response_model=response_model,
                     max_tokens=max_tokens,

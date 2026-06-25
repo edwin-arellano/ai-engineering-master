@@ -51,6 +51,17 @@ def render_component_text(component: BudgetComponent, parent_context: str) -> st
     )
 
 
+def render_task_text(component: BudgetComponent, parent_context: str) -> str:
+    """Texto de una tarea atómica (S09): foco en el qué + complejidad + horas, con
+    headers del padre para contexto. Más corto que render_component_text."""
+    return (
+        f"{parent_context}\n\n"
+        f"Task: {component.name}\n"
+        f"Detail: {component.description}\n"
+        f"Complexity: {component.complexity} | Hours: {component.estimated_hours}"
+    )
+
+
 def build_metadata(
     component: BudgetComponent, budget: Budget, *, strategy: str, **extra
 ) -> dict:
