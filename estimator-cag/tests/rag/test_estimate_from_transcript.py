@@ -11,7 +11,6 @@ import pytest
 from app.foundations.config import get_settings
 from app.foundations.llm_wrapper import LLMWrapper
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
-from app.generation.rag.persistence.database import AsyncSessionLocal
 from app.generation.rag.retrieval import estimate_from_transcript
 
 _TRANSCRIPT = """
@@ -31,13 +30,22 @@ def test_estimate_from_transcript_end_to_end() -> None:
     wrapper = LLMWrapper(settings)
 
     async def run():
-        return await estimate_from_transcript(
-            transcript=_TRANSCRIPT,
-            wrapper=wrapper,
-            embedder=LiteLLMEmbedder(),
-            session_factory=AsyncSessionLocal,
-            settings=settings,
-        )
+        # Engine FRESCO por test: evita reutilizar el pool del AsyncSessionLocal
+        # global entre event loops distintos (asyncio.run de varios tests).
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            return await estimate_from_transcript(
+                transcript=_TRANSCRIPT,
+                wrapper=wrapper,
+                embedder=LiteLLMEmbedder(),
+                session_factory=factory,
+                settings=settings,
+            )
+        finally:
+            await engine.dispose()
 
     result = asyncio.run(run())
 
