@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pgvector.sqlalchemy import HALFVEC
-from sqlalchemy import cast, select, text
+from sqlalchemy import cast, func, select, text
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -199,4 +199,38 @@ async def search_chunks_exact(
     await session.execute(text("SET LOCAL enable_indexscan = off"))
     await session.execute(text("SET LOCAL enable_bitmapscan = off"))
     result = await session.execute(_build_exact_search_stmt(query_vector, k))
+    return list(result.all())
+
+
+async def search_chunks_fulltext(
+    session: AsyncSession,
+    *,
+    query_text: str,
+    k: int,
+    filters: "MetadataFilters | None" = None,
+) -> list[Row]:
+    """Búsqueda léxica full-text (config 'spanish') sobre content_tsv. Devuelve top-k
+    por ts_rank. Misma proyección que search_chunks (sin embedding) para construir
+    RetrievedChunk homogéneos. Reutiliza _apply_metadata_filters para coherencia con
+    la rama vectorial (mismos filtros de sector/año/tech/chunk_type).
+
+    `lexical_rank` (ts_rank) NO es comparable con la distancia coseno: por eso la
+    fusión posterior usa RRF (solo posiciones), no las puntuaciones brutas.
+    """
+    tsquery = func.websearch_to_tsquery("spanish", query_text)
+    rank = func.ts_rank(ChunkRow.content_tsv, tsquery)
+    stmt = (
+        select(
+            ChunkRow.id.label("chunk_id"),
+            ChunkRow.document_id.label("document_id"),
+            ChunkRow.chunk_type.label("chunk_type"),
+            ChunkRow.content.label("content"),
+            ChunkRow.metadata_.label("metadata"),
+            rank.label("lexical_rank"),
+        )
+        .where(ChunkRow.content_tsv.op("@@")(tsquery))
+    )
+    stmt = _apply_metadata_filters(stmt, filters)
+    stmt = stmt.order_by(rank.desc()).limit(k)
+    result = await session.execute(stmt)
     return list(result.all())
