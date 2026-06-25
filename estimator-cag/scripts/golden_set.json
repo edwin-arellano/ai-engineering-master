@@ -1,0 +1,36 @@
+{
+  "annotation_criterion": "Relevante si serviría como referencia directa de esfuerzo para estimar este proyecto. Anotado a mano leyendo data/budgets_sample.json (juicio de dominio, NO derivado de la similitud vectorial). Relevancia binaria.",
+  "top_k": 5,
+  "queries": [
+    {
+      "id": "q01",
+      "query": "Plataforma de e-commerce con catálogo de productos, carrito y panel de administración",
+      "relevant_budget_ids": ["BUD-2024-005", "BUD-2023-006"],
+      "note": "BUD-2024-005 (storefront headless: carrito, recomendación, faceted search) es la referencia directa; BUD-2023-006 (marketplace multi-vendor con onboarding/split payments) aporta el panel de administración y pagos."
+    },
+    {
+      "id": "q02",
+      "query": "API de banca móvil con autenticación OAuth 2.0 y cumplimiento PSD2",
+      "relevant_budget_ids": ["BUD-2024-001"],
+      "note": "Coincidencia casi literal con BUD-2024-001 (OAuth 2.0 backend + PSD2 compliance + ledger). Caso fácil con identificadores exactos (OAuth, PSD2)."
+    },
+    {
+      "id": "q03",
+      "query": "Integración de pagos con Stripe: suscripciones y webhooks de facturación",
+      "relevant_budget_ids": ["BUD-2024-002", "BUD-2023-006"],
+      "note": "BUD-2024-002 (payment gateway adapter + fraud scoring) es la referencia de esfuerzo para una integración de pagos; BUD-2023-006 (split payment engine) es el segundo más cercano. Caso difícil: el corpus no nombra 'Stripe' literalmente."
+    },
+    {
+      "id": "q04",
+      "query": "Plataforma de telemedicina con gestión de citas y notas clínicas",
+      "relevant_budget_ids": ["BUD-2024-010", "BUD-2023-009"],
+      "note": "BUD-2024-010 (telehealth: video consultation + e-prescription) y BUD-2023-009 (appointment scheduling + EHR/HL7-FHIR). Caso de salto cross-lingual: 'telemedicina'/'citas'/'notas clínicas' (ES) vs 'telehealth'/'appointment'/'EHR' (EN) → la léxica 'spanish' apenas casa, la vectorial sí."
+    },
+    {
+      "id": "q05",
+      "query": "Herramienta interna de gestión documental con control de acceso por roles",
+      "relevant_budget_ids": ["BUD-2023-015"],
+      "note": "Caso difícil / dominio colindante: el corpus no tiene gestión documental con RBAC. BUD-2023-015 (LMS: course delivery + adaptive paths) es el análogo más cercano (entrega de contenidos con roles). Cobertura débil a propósito, para estresar las 4 configs."
+    }
+  ]
+}

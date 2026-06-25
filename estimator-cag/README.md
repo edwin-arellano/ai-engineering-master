@@ -1509,3 +1509,48 @@ cada uno con su primary y fallback. Cada fase pide el alias que necesita.
 Búsqueda híbrida, re-ranking, reformulación multi-query, flujo invertido CAG↔RAG con
 agentes, augmentation con fuentes externas y securización operativa del retriever
 (rate-limiting, claves, VPC, caché semántica de idempotencia).
+
+## Recuperación avanzada (S10): híbrida + reranking
+
+El pipeline de recuperación de S09 (vectorial con filtros + threshold) se amplía con
+una rama léxica y una etapa de reordenación fina, ambas componibles y medibles.
+
+### Búsqueda híbrida (semántica + léxica + RRF)
+
+La rama léxica usa full-text search nativo de PostgreSQL: una columna `content_tsv`
+(`tsvector` generada con config `'spanish'`) e índice GIN, consultada con
+`websearch_to_tsquery` y `ts_rank`. Encuentra lo que la semántica diluye: nombres
+propios, siglas, tecnologías ("Stripe", "OAuth", "PSD2"). Sus resultados se fusionan
+con los vectoriales mediante Reciprocal Rank Fusion (`k=60`), que combina por posición
+y esquiva el problema de calibrar puntuaciones incomparables. Ambas ramas corren en
+paralelo: la latencia de la híbrida es la de la rama más lenta, no la suma.
+
+### Reranking (recall-then-rerank)
+
+Un cross-encoder multilingüe (`BAAI/bge-reranker-v2-m3`) lee consulta y candidato
+juntos y reordena. Patrón de dos etapas: recall amplio (top-50) con la búsqueda barata,
+reordenación fina con el cross-encoder caro sobre esos 50 → top-5. El modelo se carga
+una vez al arranque; la inferencia se despacha a un thread para no bloquear el event loop.
+
+### Configuración
+
+Modo de búsqueda y reranking se controlan por parámetro del endpoint
+(`search_mode: vector|hybrid`, `reranking: bool`) o por `Settings`
+(`RAG_SEARCH_MODE`, `RERANKING_ENABLED`). Esto permite invocar de forma reproducible
+las cuatro configuraciones (vectorial/híbrida × rerank on/off).
+
+### Medición
+
+`scripts/measure_retrieval.py` recorre un golden set anotado a mano
+(`scripts/golden_set.json`) contra el endpoint de debug `/api/v1/retrieve-debug`
+(retrieval puro, sin generación LLM) y reporta precision@5 y latencia mediana por
+configuración. Es una herramienta de decisión puntual (vive en `scripts/`, no en la app):
+convierte "parece que va mejor" en una tabla de ganancia vs coste. Las conclusiones de
+la medición sobre este corpus están en `pre-session-10.md`. La decisión de qué activar
+en producción se toma con esa tabla, no por defecto.
+
+### Coste operativo
+
+El reranker añade `sentence-transformers` (+ torch) a la imagen, ralentiza el arranque
+en frío (carga del modelo) y consume memoria permanente: el healthcheck debe esperar a
+que el modelo cargue antes de declarar el servicio listo.
