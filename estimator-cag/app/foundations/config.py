@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     )
     rrf_smoothing_k: int = Field(default=60, alias="RRF_SMOOTHING_K")
 
+    # === Retrieval avanzado (S10): routing multi-índice en cascada ===
+    # Toggles a False por defecto → el pipeline replica el comportamiento de pre-S10.
+    routing_enabled: bool = Field(default=False, alias="ROUTING_ENABLED")
+    routing_prompt_version: str = Field(default="v1", alias="ROUTING_PROMPT_VERSION")
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None

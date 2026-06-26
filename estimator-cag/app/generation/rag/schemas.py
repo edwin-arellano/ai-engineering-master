@@ -189,3 +189,40 @@ class AugmentedContext(BaseModel):
     token_count: int
     included_refs: list[str]
     dropped: int
+
+
+# ---------------------------------------------------------------------------
+# S10 — Routing multi-índice y transformación de consulta
+# ---------------------------------------------------------------------------
+
+
+class RoutingDecision(BaseModel):
+    """Colección(es) contra las que buscar una consulta. Salida estructurada del nivel
+    LLM del router en cascada (también la construyen los niveles explícito/determinista/
+    fallback). 1..3 targets sin duplicados controlados por el llamante."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[SearchTarget] = Field(min_length=1, max_length=3)
+    reason: str = Field(..., min_length=1)
+
+
+class SubQuery(BaseModel):
+    """Una sub-consulta de la transformación: un tema + su texto de búsqueda."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1)
+
+
+class QueryTransformResult(BaseModel):
+    """Salida del transformador de consulta: técnica aplicada + consultas resultantes.
+    - direct: 1 sub-consulta (la original, limpia) — sin LLM para consultas nítidas.
+    - expansion: una intención, varias formulaciones → fusión por CONSENSO (RRF).
+    - decomposition: varias intenciones → sub-consultas → fusión por COBERTURA (interleave)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    technique: Literal["direct", "expansion", "decomposition"]
+    sub_queries: list[SubQuery] = Field(min_length=1, max_length=4)
