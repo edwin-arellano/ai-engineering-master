@@ -83,6 +83,29 @@ class Settings(BaseSettings):
         default="v1", alias="QUERY_TRANSFORM_PROMPT_VERSION"
     )
 
+    # === Retrieval avanzado (S10): ponderación blanda (último ajuste, solo desempate) ===
+    # Decaimiento temporal por AÑO (chunks llevan `year`, no fecha): semivida en años
+    # (2.5 ≈ la "semivida de 900 días" del directo). Boosts contextuales conservadores.
+    temporal_decay_enabled: bool = Field(default=False, alias="TEMPORAL_DECAY_ENABLED")
+    temporal_half_life_years: float = Field(
+        default=2.5,
+        alias="TEMPORAL_HALF_LIFE_YEARS",
+        description="Años tras los que el peso temporal cae a 0.5.",
+    )
+    contextual_weighting_enabled: bool = Field(
+        default=False, alias="CONTEXTUAL_WEIGHTING_ENABLED"
+    )
+    contextual_tech_boost: float = Field(
+        default=1.3,
+        alias="CONTEXTUAL_TECH_BOOST",
+        description="Boost si la tecnología del chunk coincide con la del brief.",
+    )
+    contextual_sector_boost: float = Field(
+        default=1.2,
+        alias="CONTEXTUAL_SECTOR_BOOST",
+        description="Boost si el sector del chunk coincide con el del brief.",
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
