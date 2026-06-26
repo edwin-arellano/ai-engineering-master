@@ -1,36 +1,77 @@
 {
   "annotation_criterion": "Relevante si serviría como referencia directa de esfuerzo para estimar este proyecto. Anotado a mano leyendo data/budgets_sample.json (juicio de dominio, NO derivado de la similitud vectorial). Relevancia binaria.",
+  "stage_criteria": {
+    "routing": "El golden case indica en qué colección DEBERÍA buscarse (expected_targets). Mide accuracy de routing: ¿los targets resueltos == expected_targets? El routing ayuda cuando la query señala su tipo y puede hundir descripciones de proyecto (no es universalmente bueno).",
+    "query_transform": "Casos multi-tema (technique esperada 'decomposition') vs una sola intención ('expansion'/'direct'). Mide si la fusión por cobertura recupera referencias de todos los sub-temas.",
+    "temporal": "Con corpus por año, el decaimiento solo desempata finalistas; un histórico reciente equivalente no debe quedar por detrás de uno viejo."
+  },
   "top_k": 5,
   "queries": [
     {
       "id": "q01",
       "query": "Plataforma de e-commerce con catálogo de productos, carrito y panel de administración",
       "relevant_budget_ids": ["BUD-2024-005", "BUD-2023-006"],
+      "expected_targets": ["budgets"],
       "note": "BUD-2024-005 (storefront headless: carrito, recomendación, faceted search) es la referencia directa; BUD-2023-006 (marketplace multi-vendor con onboarding/split payments) aporta el panel de administración y pagos."
     },
     {
       "id": "q02",
       "query": "API de banca móvil con autenticación OAuth 2.0 y cumplimiento PSD2",
       "relevant_budget_ids": ["BUD-2024-001"],
+      "expected_targets": ["budgets"],
       "note": "Coincidencia casi literal con BUD-2024-001 (OAuth 2.0 backend + PSD2 compliance + ledger). Caso fácil con identificadores exactos (OAuth, PSD2)."
     },
     {
       "id": "q03",
       "query": "Integración de pagos con Stripe: suscripciones y webhooks de facturación",
       "relevant_budget_ids": ["BUD-2024-002", "BUD-2023-006"],
+      "expected_targets": ["budgets"],
       "note": "BUD-2024-002 (payment gateway adapter + fraud scoring) es la referencia de esfuerzo para una integración de pagos; BUD-2023-006 (split payment engine) es el segundo más cercano. Caso difícil: el corpus no nombra 'Stripe' literalmente."
     },
     {
       "id": "q04",
       "query": "Plataforma de telemedicina con gestión de citas y notas clínicas",
       "relevant_budget_ids": ["BUD-2024-010", "BUD-2023-009"],
+      "expected_targets": ["budgets"],
       "note": "BUD-2024-010 (telehealth: video consultation + e-prescription) y BUD-2023-009 (appointment scheduling + EHR/HL7-FHIR). Caso de salto cross-lingual: 'telemedicina'/'citas'/'notas clínicas' (ES) vs 'telehealth'/'appointment'/'EHR' (EN) → la léxica 'spanish' apenas casa, la vectorial sí."
     },
     {
       "id": "q05",
       "query": "Herramienta interna de gestión documental con control de acceso por roles",
       "relevant_budget_ids": ["BUD-2023-015"],
+      "expected_targets": ["budgets"],
       "note": "Caso difícil / dominio colindante: el corpus no tiene gestión documental con RBAC. BUD-2023-015 (LMS: course delivery + adaptive paths) es el análogo más cercano (entrega de contenidos con roles). Cobertura débil a propósito, para estresar las 4 configs."
+    }
+  ],
+  "routing_queries": [
+    {
+      "id": "r01_budgets_cost",
+      "query": "¿cuánto costó la integración de pagos en proyectos anteriores?",
+      "expected_targets": ["budgets"],
+      "expected_technique": "direct",
+      "note": "Pregunta de coste/esfuerzo → budgets aunque mencione 'integración'. Determinista (vocabulario 'costó')."
+    },
+    {
+      "id": "r02_transcript_client",
+      "query": "¿qué pidió el cliente sobre la autenticación en la reunión?",
+      "expected_targets": ["transcripts"],
+      "expected_technique": "direct",
+      "note": "Pregunta sobre lo expresado por el cliente en la conversación → transcripts. Determinista ('pidió el cliente'/'reunión')."
+    },
+    {
+      "id": "r03_technical_siglas",
+      "query": "detalle del protocolo OAuth 2.0 y estándar PKCE",
+      "expected_targets": ["technical_docs"],
+      "expected_technique": "direct",
+      "note": "Consulta con siglas técnicas y vocabulario de protocolo/estándar → technical_docs. Determinista ('protocolo'/'oauth'/'estándar')."
+    },
+    {
+      "id": "r04_multitopic_decomposition",
+      "query": "Necesitamos una API de banca con autenticación OAuth y cumplimiento PSD2, además de una integración de pagos con suscripciones y webhooks, y un panel de administración con control de acceso por roles",
+      "expected_targets": ["budgets"],
+      "expected_technique": "decomposition",
+      "relevant_budget_ids": ["BUD-2024-001", "BUD-2024-002", "BUD-2023-006"],
+      "note": "Descripción de proyecto multi-tema (auth bancaria + pagos + panel RBAC). Una descripción larga de proyecto va a budgets; la transformación debe DESCOMPONER y la fusión por cobertura debe traer referencias de los tres sub-temas."
     }
   ]
 }

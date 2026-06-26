@@ -178,6 +178,10 @@ class RetrievalResult(BaseModel):
     distance_threshold: float
     chunks: list[RetrievedChunk]
     search_time_ms: int
+    # Trazabilidad del pipeline avanzado (S10). Defaults vacíos para back-compat.
+    targets: list[str] = Field(default_factory=list)
+    routing_level: str = ""
+    technique: str = "direct"
 
 
 class AugmentedContext(BaseModel):

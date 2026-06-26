@@ -251,4 +251,5 @@ class RetrievalPipeline:
             reformulated=reformulated, filters=base_filters or MetadataFilters(),
             top_k=settings.rag_top_k, distance_threshold=settings.rag_distance_threshold,
             chunks=candidates, search_time_ms=elapsed_ms,
+            targets=[t.value for t in targets], routing_level=level, technique=technique,
         )

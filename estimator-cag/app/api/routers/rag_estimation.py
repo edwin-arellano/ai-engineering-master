@@ -58,17 +58,25 @@ class RetrieveDebugRequest(BaseModel):
     search_mode: Literal["vector", "hybrid"] | None = None
     reranking: bool | None = None
     apply_metadata_filters: bool = True
+    # Toggles del pipeline avanzado (S10): medición por etapa.
+    routing: bool = False
+    query_transform: bool = False
+    temporal_decay: bool = False
 
 
 class RetrieveDebugResult(BaseModel):
     """Ranking recuperado (sin generación). `search_time_ms` es el tiempo del pipeline
-    de retrieval (excluye reformulación y HTTP): latencia limpia para la medición."""
+    de retrieval (excluye reformulación y HTTP): latencia limpia para la medición.
+    `targets`/`routing_level`/`technique` permiten medir accuracy de routing y técnica."""
 
     retrieved_budget_ids: list[str]
     retrieved_chunks: int
     search_mode: str
     reranking: bool
     search_time_ms: int
+    targets: list[str] = []
+    routing_level: str = ""
+    technique: str = "direct"
 
 
 @lru_cache(maxsize=1)
@@ -144,12 +152,17 @@ async def retrieve_debug_endpoint(request: RetrieveDebugRequest) -> RetrieveDebu
         reformulated = reformulate_transcript(
             transcript=request.transcript, wrapper=_wrapper(), settings=settings
         )
+        # El wrapper es necesario si se activa routing o query_transform (etapas con LLM).
         pipeline = RetrievalPipeline(
-            embedder=LiteLLMEmbedder(), session_factory=AsyncSessionLocal
+            embedder=LiteLLMEmbedder(),
+            session_factory=AsyncSessionLocal,
+            wrapper=_wrapper(),
         )
         retrieval = await pipeline.retrieve(
             reformulated=reformulated, settings=settings,
             search_mode=search_mode, reranking=reranking, filters=filters,
+            routing=request.routing, query_transform=request.query_transform,
+            temporal_decay=request.temporal_decay,
         )
         return RetrieveDebugResult(
             retrieved_budget_ids=dedup_budget_ids(retrieval.chunks),
@@ -157,6 +170,9 @@ async def retrieve_debug_endpoint(request: RetrieveDebugRequest) -> RetrieveDebu
             search_mode=search_mode,
             reranking=reranking,
             search_time_ms=retrieval.search_time_ms,
+            targets=retrieval.targets,
+            routing_level=retrieval.routing_level,
+            technique=retrieval.technique,
         )
     except Exception:  # noqa: BLE001
         logger.exception("rag.retrieve_debug_failed")
