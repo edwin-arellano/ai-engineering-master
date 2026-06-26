@@ -34,7 +34,7 @@ def test_search_uses_hnsw_index() -> None:
                     f"EXPLAIN ANALYZE SELECT id, "
                     f"(embedding::halfvec({EMBEDDING_DIM})) <=> "
                     f"'{literal}'::halfvec({EMBEDDING_DIM}) AS d "
-                    f"FROM chunks ORDER BY d LIMIT 5"
+                    f"FROM budget_chunks ORDER BY d LIMIT 5"
                 )
             )
             return "\n".join(row[0] for row in plan.all())
@@ -44,5 +44,5 @@ def test_search_uses_hnsw_index() -> None:
     except Exception as exc:  # noqa: BLE001
         pytest.skip(f"DB/índice no disponible: {exc}")
 
-    assert "chunks_embedding_halfvec_idx" in plan_text, plan_text
+    assert "budget_chunks_embedding_halfvec_idx" in plan_text, plan_text
     assert "Seq Scan" not in plan_text, plan_text

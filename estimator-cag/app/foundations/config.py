@@ -64,6 +64,68 @@ class Settings(BaseSettings):
     )
     rrf_smoothing_k: int = Field(default=60, alias="RRF_SMOOTHING_K")
 
+    # === Retrieval avanzado (S10): routing multi-índice en cascada ===
+    # Toggles a False por defecto → el pipeline replica el comportamiento de pre-S10.
+    routing_enabled: bool = Field(default=False, alias="ROUTING_ENABLED")
+    routing_prompt_version: str = Field(default="v1", alias="ROUTING_PROMPT_VERSION")
+
+    # === Retrieval avanzado (S10): transformación de consulta ===
+    query_transform_enabled: bool = Field(default=False, alias="QUERY_TRANSFORM_ENABLED")
+    query_transform_strategy: str = Field(
+        default="auto",
+        alias="QUERY_TRANSFORM_STRATEGY",
+        description="auto | expand | decompose | off.",
+    )
+    query_transform_max_subqueries: int = Field(
+        default=4, alias="QUERY_TRANSFORM_MAX_SUBQUERIES"
+    )
+    query_transform_prompt_version: str = Field(
+        default="v1", alias="QUERY_TRANSFORM_PROMPT_VERSION"
+    )
+
+    # === Retrieval avanzado (S10): ponderación blanda (último ajuste, solo desempate) ===
+    # Decaimiento temporal por AÑO (chunks llevan `year`, no fecha): semivida en años
+    # (2.5 ≈ la "semivida de 900 días" del directo). Boosts contextuales conservadores.
+    temporal_decay_enabled: bool = Field(default=False, alias="TEMPORAL_DECAY_ENABLED")
+    temporal_half_life_years: float = Field(
+        default=2.5,
+        alias="TEMPORAL_HALF_LIFE_YEARS",
+        description="Años tras los que el peso temporal cae a 0.5.",
+    )
+    contextual_weighting_enabled: bool = Field(
+        default=False, alias="CONTEXTUAL_WEIGHTING_ENABLED"
+    )
+    contextual_tech_boost: float = Field(
+        default=1.3,
+        alias="CONTEXTUAL_TECH_BOOST",
+        description="Boost si la tecnología del chunk coincide con la del brief.",
+    )
+    contextual_sector_boost: float = Field(
+        default=1.2,
+        alias="CONTEXTUAL_SECTOR_BOOST",
+        description="Boost si el sector del chunk coincide con el del brief.",
+    )
+
+    # === Flujo invertido de estimación (S10) ===
+    # Fase 1 — esqueleto (CAG, sin horas). Alias 'estimator' (potente).
+    structure_prompt_version: str = Field(default="v1", alias="STRUCTURE_PROMPT_VERSION")
+    structure_temperature: float = Field(default=0.2, alias="STRUCTURE_TEMPERATURE")
+    structure_max_tokens: int = Field(default=4000, alias="STRUCTURE_MAX_TOKENS")
+    # Fase 2 — horas por-tarea (RAG determinista, consenso de vecinos).
+    per_task_top_k: int = Field(default=5, alias="PER_TASK_TOP_K")
+    per_task_search_mode: str = Field(default="vector", alias="PER_TASK_SEARCH_MODE")
+    per_task_reranking: bool = Field(default=True, alias="PER_TASK_RERANKING")
+    per_task_close_distance: float = Field(
+        default=0.45,
+        alias="PER_TASK_CLOSE_DISTANCE",
+        description="Distancia coseno bajo la cual un vecino cuenta como 'cercano'.",
+    )
+    per_task_min_neighbors_high: int = Field(
+        default=2,
+        alias="PER_TASK_MIN_NEIGHBORS_HIGH",
+        description="Nº de vecinos cercanos para fiabilidad 'high'.",
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None

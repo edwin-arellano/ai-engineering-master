@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.foundations.config import get_settings
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from app.generation.rag.persistence.database import get_db_session
+from app.generation.rag.persistence.models import BudgetChunkRow
 from app.generation.rag.persistence.repository import search_chunks
 from app.generation.rag.schemas import SearchRequest, SearchResponse, SearchResultItem
 
@@ -39,6 +40,7 @@ async def search(
 
     rows = await search_chunks(
         session,
+        model=BudgetChunkRow,
         query_vector=query_vector,
         k=request.k,
         ef_search=get_settings().hnsw_ef_search,

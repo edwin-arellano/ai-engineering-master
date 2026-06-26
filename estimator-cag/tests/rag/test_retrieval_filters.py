@@ -10,6 +10,7 @@ import asyncio
 import pytest
 from sqlalchemy import text
 
+from app.generation.rag.persistence.models import BudgetChunkRow
 from app.generation.rag.persistence.repository import (
     _apply_metadata_filters,
     _halfvec_distance,
@@ -19,17 +20,25 @@ from app.generation.rag.schemas import MetadataFilters
 
 
 def _compiled_where(filters: MetadataFilters | None) -> str:
-    distance = _halfvec_distance([0.0] * 1536)
-    stmt = _select_with_distance(distance)
-    stmt = _apply_metadata_filters(stmt, filters)
+    distance = _halfvec_distance(BudgetChunkRow, [0.0] * 1536)
+    stmt = _select_with_distance(BudgetChunkRow, distance)
+    stmt = _apply_metadata_filters(stmt, BudgetChunkRow, filters)
     return str(stmt.compile(compile_kwargs={"literal_binds": True}))
 
 
 def test_no_filters_is_noop():
-    base = str(_select_with_distance(_halfvec_distance([0.0] * 1536)).compile())
+    base = str(
+        _select_with_distance(
+            BudgetChunkRow, _halfvec_distance(BudgetChunkRow, [0.0] * 1536)
+        ).compile()
+    )
     filtered = str(
         _apply_metadata_filters(
-            _select_with_distance(_halfvec_distance([0.0] * 1536)), None
+            _select_with_distance(
+                BudgetChunkRow, _halfvec_distance(BudgetChunkRow, [0.0] * 1536)
+            ),
+            BudgetChunkRow,
+            None,
         ).compile()
     )
     assert "WHERE" not in filtered
@@ -142,7 +151,7 @@ def test_filters_preserve_halfvec_alignment() -> None:
                         f"EXPLAIN ANALYZE SELECT id, "
                         f"(embedding::halfvec({EMBEDDING_DIM})) <=> "
                         f"'{literal}'::halfvec({EMBEDDING_DIM}) AS d "
-                        f"FROM chunks {where_sql} ORDER BY d LIMIT 25"
+                        f"FROM budget_chunks {where_sql} ORDER BY d LIMIT 25"
                     )
                 )
                 return "\n".join(row[0] for row in plan.all())
@@ -150,14 +159,14 @@ def test_filters_preserve_halfvec_alignment() -> None:
             await engine.dispose()
 
     baseline = asyncio.run(explain(""))
-    if "chunks_embedding_halfvec_idx" not in baseline:
+    if "budget_chunks_embedding_halfvec_idx" not in baseline:
         pytest.skip(
             "corpus diminuto: el planner prefiere Seq Scan por coste. Siembra chunks "
             "sintéticos (scripts/seed_synthetic_chunks.py) para ejercitar el índice HNSW."
         )
 
     # Baseline sí usa el índice → la alineación operador/halfvec es correcta.
-    assert "Index Scan using chunks_embedding_halfvec_idx" in baseline
+    assert "Index Scan using budget_chunks_embedding_halfvec_idx" in baseline
 
     # Con un filtro de metadata el plan sigue computando la distancia halfvec
     # (alineación preservada); el access path puede variar por selectividad.

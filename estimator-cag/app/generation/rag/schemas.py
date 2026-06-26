@@ -5,12 +5,23 @@ lista de components. El chunker produce un Chunk por componente.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 Sector = Literal["finance", "ecommerce", "healthcare", "industrial", "other"]
 Complexity = Literal["low", "medium", "high"]
+
+
+class SearchTarget(StrEnum):
+    """Colección particionada del corpus (S10). Cada valor mapea a una tabla ORM
+    vía COLLECTION_MODELS (persistence/collections.py). El router en cascada decide
+    contra cuál(es) buscar; el flujo por-tarea apunta siempre a BUDGETS (explícito)."""
+
+    BUDGETS = "budgets"
+    TRANSCRIPTS = "transcripts"
+    TECHNICAL_DOCS = "technical_docs"
 
 
 class BudgetComponent(BaseModel):
@@ -63,12 +74,19 @@ class EmbeddedChunk(Chunk):
 
 
 class DocumentIngestRequest(BaseModel):
-    """Contrato nuevo de /embeddings/ingest: un documento (un presupuesto) por llamada."""
+    """Contrato de /embeddings/ingest. Por defecto ingesta un presupuesto a la colección
+    de budgets (back-compat). Con `collection` != budgets ingesta texto plano
+    (`content_text`) a la colección transcripts/technical correspondiente (S10)."""
 
     source_path: str = Field(min_length=1)
     document_type: str = "historical_budget"
-    # JSON completo del presupuesto; se valida contra Budget en el endpoint.
-    content: dict[str, Any]
+    # Colección destino (S10). Default BUDGETS = camino histórico sin cambios.
+    collection: SearchTarget = SearchTarget.BUDGETS
+    # JSON completo del presupuesto (solo colección budgets); se valida contra Budget.
+    content: dict[str, Any] | None = None
+    # Texto plano (solo colecciones transcripts/technical_docs): se trocea con el
+    # chunker de texto de la colección.
+    content_text: str | None = None
     # Estrategia de chunking a aplicar (S09). Default back-compat: "structural"
     # (un chunk por componente → chunk_type=budget_component). "historical_task"
     # produce un chunk por tarea atómica → chunk_type=historical_task.
@@ -160,6 +178,10 @@ class RetrievalResult(BaseModel):
     distance_threshold: float
     chunks: list[RetrievedChunk]
     search_time_ms: int
+    # Trazabilidad del pipeline avanzado (S10). Defaults vacíos para back-compat.
+    targets: list[str] = Field(default_factory=list)
+    routing_level: str = ""
+    technique: str = "direct"
 
 
 class AugmentedContext(BaseModel):
@@ -171,3 +193,40 @@ class AugmentedContext(BaseModel):
     token_count: int
     included_refs: list[str]
     dropped: int
+
+
+# ---------------------------------------------------------------------------
+# S10 — Routing multi-índice y transformación de consulta
+# ---------------------------------------------------------------------------
+
+
+class RoutingDecision(BaseModel):
+    """Colección(es) contra las que buscar una consulta. Salida estructurada del nivel
+    LLM del router en cascada (también la construyen los niveles explícito/determinista/
+    fallback). 1..3 targets sin duplicados controlados por el llamante."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[SearchTarget] = Field(min_length=1, max_length=3)
+    reason: str = Field(..., min_length=1)
+
+
+class SubQuery(BaseModel):
+    """Una sub-consulta de la transformación: un tema + su texto de búsqueda."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1)
+
+
+class QueryTransformResult(BaseModel):
+    """Salida del transformador de consulta: técnica aplicada + consultas resultantes.
+    - direct: 1 sub-consulta (la original, limpia) — sin LLM para consultas nítidas.
+    - expansion: una intención, varias formulaciones → fusión por CONSENSO (RRF).
+    - decomposition: varias intenciones → sub-consultas → fusión por COBERTURA (interleave)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    technique: Literal["direct", "expansion", "decomposition"]
+    sub_queries: list[SubQuery] = Field(min_length=1, max_length=4)

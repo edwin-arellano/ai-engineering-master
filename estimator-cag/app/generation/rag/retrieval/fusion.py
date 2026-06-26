@@ -29,3 +29,25 @@ def reciprocal_rank_fusion(
         chunk_id
         for chunk_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)
     ]
+
+
+def interleave_rankings(rankings: list[list[int]], top_k: int) -> list[int]:
+    """Round-robin entre rankings: garantiza COBERTURA por sub-consulta (descomposición).
+
+    A diferencia de RRF (que premia el consenso entre rankings), aquí cada tema mantiene
+    representación: se toma el 1º de cada ranking, luego el 2º de cada uno, etc. Útil
+    cuando las sub-consultas son intenciones DISTINTAS y queremos que todas aporten,
+    no que gane la que más se repite. Dedup garantizado por `seen`.
+    """
+    fused: list[int] = []
+    seen: set[int] = set()
+    if not rankings:
+        return fused
+    for position in range(max((len(r) for r in rankings), default=0)):
+        for ranking in rankings:
+            if position < len(ranking) and ranking[position] not in seen:
+                fused.append(ranking[position])
+                seen.add(ranking[position])
+                if len(fused) == top_k:
+                    return fused
+    return fused

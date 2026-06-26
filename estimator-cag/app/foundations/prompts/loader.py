@@ -185,6 +185,33 @@ def render_reformulation_prompt(version: str = "v1") -> str:
     return _env.get_template(f"reformulation/{version}/system.j2").render()
 
 
+def render_routing_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del router multi-índice en cascada (S10).
+
+    Solo system: el user message es la consulta a enrutar (ver
+    ``app.generation.rag.retrieval.router.QueryRouter``).
+    """
+    return _env.get_template(f"routing/{version}/system.j2").render()
+
+
+def render_query_transform_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del transformador de consulta (S10).
+
+    Solo system: el user message es la consulta a expandir/descomponer (ver
+    ``app.generation.rag.retrieval.query_transform.transform_query``).
+    """
+    return _env.get_template(f"query_transform/{version}/system.j2").render()
+
+
+def render_estimation_skeleton_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del generador de esqueleto del flujo invertido (S10).
+
+    Solo system: el user message es la transcripción de la reunión (ver
+    ``app.generation.rag.retrieval.structure.generate_skeleton``).
+    """
+    return _env.get_template(f"estimation_skeleton/{version}/system.j2").render()
+
+
 def render_rag_estimation_prompt(version: str = "v1") -> str:
     """Renderiza el system prompt de la generación RAG-grounded (S09).
 

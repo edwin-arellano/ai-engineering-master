@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.foundations.config import Settings
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
+from app.generation.rag.persistence.models import BudgetChunkRow
 from app.generation.rag.persistence.repository import search_chunks
 from app.generation.rag.schemas import (
     MetadataFilters,
@@ -51,6 +52,7 @@ class RagRetriever:
         async with self._session_factory() as session:
             rows = await search_chunks(
                 session,
+                model=BudgetChunkRow,
                 query_vector=query_vector,
                 k=settings.rag_top_k,
                 ef_search=settings.hnsw_ef_search,

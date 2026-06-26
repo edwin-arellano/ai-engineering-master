@@ -29,6 +29,7 @@ def main() -> None:
                     json={
                         "source_path": source_path,
                         "document_type": "historical_budget",
+                        "collection": "budgets",
                         "content": budget,
                         "chunk_strategy": strategy,
                     },

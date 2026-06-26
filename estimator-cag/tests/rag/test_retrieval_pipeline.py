@@ -37,11 +37,11 @@ def _build_pipeline(monkeypatch, *, vector_ids, lexical_ids):
     pipe = RetrievalPipeline(embedder=object(), session_factory=object())
     calls = {"vector_k": None, "lexical_k": None, "rerank_top_k": None}
 
-    async def fake_vector(*, search_text, k, filters, ef_search):
+    async def fake_vector(*, model=None, search_text, k, filters, ef_search):
         calls["vector_k"] = k
         return [_chunk(c) for c in vector_ids]
 
-    async def fake_lexical(*, query_text, k, filters=None):
+    async def fake_lexical(*, model=None, query_text, k, filters=None):
         calls["lexical_k"] = k
         return [_chunk(c) for c in lexical_ids]
 
