@@ -69,6 +69,20 @@ class Settings(BaseSettings):
     routing_enabled: bool = Field(default=False, alias="ROUTING_ENABLED")
     routing_prompt_version: str = Field(default="v1", alias="ROUTING_PROMPT_VERSION")
 
+    # === Retrieval avanzado (S10): transformación de consulta ===
+    query_transform_enabled: bool = Field(default=False, alias="QUERY_TRANSFORM_ENABLED")
+    query_transform_strategy: str = Field(
+        default="auto",
+        alias="QUERY_TRANSFORM_STRATEGY",
+        description="auto | expand | decompose | off.",
+    )
+    query_transform_max_subqueries: int = Field(
+        default=4, alias="QUERY_TRANSFORM_MAX_SUBQUERIES"
+    )
+    query_transform_prompt_version: str = Field(
+        default="v1", alias="QUERY_TRANSFORM_PROMPT_VERSION"
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
