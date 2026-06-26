@@ -26,6 +26,8 @@ from app.generation.rag.retrieval.pipeline import RetrievalPipeline
 from app.generation.rag.retrieval.reformulation import reformulate_transcript
 from app.generation.rag.retrieval.structure import generate_skeleton
 from app.generation.rag.retrieval.verification import (
+    CitationReport,
+    CitationVerificationError,
     enforce_confidence_coherence,
     verify_citations,
 )
@@ -53,7 +55,8 @@ class EstimateFromTranscriptResult(BaseModel):
     retrieved_chunks: int
     retrieved_budget_ids: list[str]
     context_tokens: int
-    invalid_citations: list[str]
+    citation_report: CitationReport  # informe estructural de citaciones (S11)
+    invalid_citations: list[str]  # back-compat = citation_report.dangling
     search_time_ms: int
     # Config efectiva que corrió (trazabilidad de las 4 configuraciones A/B/C/D).
     search_mode: str
@@ -93,16 +96,22 @@ async def estimate_from_transcript(
         reformulated=reformulated, context=context, wrapper=wrapper, settings=settings
     )
 
-    # 5. Verificación.
-    invalid = verify_citations(estimate, context)
+    # 5. Verificación estructural por línea (grounded/dangling/insufficient).
+    report = verify_citations(estimate, context)
     enforce_confidence_coherence(estimate)
+    # Política configurable: por defecto detectar+reportar; con REJECT_ON_DANGLING, bloquear.
+    if settings.reject_on_dangling and report.dangling:
+        raise CitationVerificationError(
+            f"citas colgantes (no estuvieron en el contexto): {report.dangling}"
+        )
 
     return EstimateFromTranscriptResult(
         estimate=estimate,
         retrieved_chunks=len(retrieval.chunks),
         retrieved_budget_ids=dedup_budget_ids(retrieval.chunks),
         context_tokens=context.token_count,
-        invalid_citations=invalid,
+        citation_report=report,
+        invalid_citations=report.dangling,
         search_time_ms=retrieval.search_time_ms,
         search_mode=search_mode,
         reranking=reranking,

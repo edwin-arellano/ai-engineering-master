@@ -23,6 +23,7 @@ from app.generation.rag.retrieval import (
 from app.generation.rag.retrieval.pipeline import RetrievalPipeline
 from app.generation.rag.retrieval.reformulation import reformulate_transcript
 from app.generation.rag.retrieval.service import dedup_budget_ids
+from app.generation.rag.retrieval.verification import CitationVerificationError
 from app.generation.rag.schemas import MetadataFilters
 
 logger = structlog.get_logger(__name__)
@@ -99,6 +100,10 @@ async def estimate_from_transcript_endpoint(
             search_mode=request.search_mode,
             reranking=request.reranking,
         )
+    except CitationVerificationError as exc:
+        # Política dura (REJECT_ON_DANGLING): citas colgantes → 422, no 500.
+        logger.warning("rag.estimate_rejected_dangling", error=str(exc))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except Exception:  # noqa: BLE001
         logger.exception("rag.estimate_from_transcript_failed")
         raise HTTPException(
