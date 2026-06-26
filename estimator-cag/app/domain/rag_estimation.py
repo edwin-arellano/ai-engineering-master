@@ -23,14 +23,26 @@ class Confidence(StrEnum):
 
 
 class Citation(BaseModel):
-    """Referencia a un chunk del que deriva una tarea. `source_id` es el chunk_ref
-    (BUD-...::AUTH-...), verificable contra los chunks recuperados."""
+    """Fuente verificable de una línea de estimación. `source_id` (= chunk_ref,
+    p.ej. BUD-2024-001::AUTH-01) es verificable contra los chunks recuperados;
+    `document_id` resuelve al presupuesto histórico (budget_id); `evidence` es el
+    span o la cifra LITERAL del chunk que respalda la línea (copiado, no parafraseado).
+
+    Nota de granularidad: no guardamos char_span/locator del presupuesto original
+    (no se capturó en la ingesta), así que la citación es a nivel de documento +
+    evidencia verbatim del chunk — honesto sobre lo que el corpus soporta (S11-04)."""
 
     model_config = ConfigDict(extra="forbid")
     source_id: str = Field(..., min_length=1)
+    document_id: str = Field(..., min_length=1)
+    evidence: str = Field(..., min_length=1, max_length=500)
 
 
 class RagTask(BaseModel):
+    """Línea de estimación. `grounded ≡ not is_assumption`: una tarea fundamentada
+    (is_assumption=False) cita ≥1 fuente verificable del contexto; una asunción
+    (is_assumption=True) va con sources=[] (no se estima a ojo sobre datos ausentes)."""
+
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(..., min_length=1, max_length=200)

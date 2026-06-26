@@ -14,14 +14,18 @@ logger = structlog.get_logger(__name__)
 
 def assemble_context(retrieval: RetrievalResult, *, max_tokens: int) -> AugmentedContext:
     """Concatena chunks (ordenados por distancia) hasta agotar el presupuesto de tokens.
-    Cada bloque va etiquetado con su source_id para habilitar las citations."""
+    Cada bloque va etiquetado con su source_id (verificable contra included_refs) y su
+    document_id (budget_id) para que la generación pueda atribuir y copiar evidencia."""
     parts: list[str] = []
     included_refs: list[str] = []
     total = 0
     dropped = 0
 
     for chunk in retrieval.chunks:
-        block = f"[source_id: {chunk.chunk_ref} | type: {chunk.chunk_type} | distance: {chunk.distance}]\n{chunk.content}"
+        block = (
+            f"[source_id: {chunk.chunk_ref} | document_id: {chunk.metadata.get('budget_id', '')} "
+            f"| type: {chunk.chunk_type} | distance: {chunk.distance}]\n{chunk.content}"
+        )
         block_tokens = count_tokens(block)
         if total + block_tokens > max_tokens:
             dropped += 1
