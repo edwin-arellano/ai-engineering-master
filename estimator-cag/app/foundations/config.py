@@ -106,6 +106,26 @@ class Settings(BaseSettings):
         description="Boost si el sector del chunk coincide con el del brief.",
     )
 
+    # === Flujo invertido de estimación (S10) ===
+    # Fase 1 — esqueleto (CAG, sin horas). Alias 'estimator' (potente).
+    structure_prompt_version: str = Field(default="v1", alias="STRUCTURE_PROMPT_VERSION")
+    structure_temperature: float = Field(default=0.2, alias="STRUCTURE_TEMPERATURE")
+    structure_max_tokens: int = Field(default=4000, alias="STRUCTURE_MAX_TOKENS")
+    # Fase 2 — horas por-tarea (RAG determinista, consenso de vecinos).
+    per_task_top_k: int = Field(default=5, alias="PER_TASK_TOP_K")
+    per_task_search_mode: str = Field(default="vector", alias="PER_TASK_SEARCH_MODE")
+    per_task_reranking: bool = Field(default=True, alias="PER_TASK_RERANKING")
+    per_task_close_distance: float = Field(
+        default=0.45,
+        alias="PER_TASK_CLOSE_DISTANCE",
+        description="Distancia coseno bajo la cual un vecino cuenta como 'cercano'.",
+    )
+    per_task_min_neighbors_high: int = Field(
+        default=2,
+        alias="PER_TASK_MIN_NEIGHBORS_HIGH",
+        description="Nº de vecinos cercanos para fiabilidad 'high'.",
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None

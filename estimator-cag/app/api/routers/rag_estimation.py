@@ -14,9 +14,11 @@ from app.foundations.config import get_settings
 from app.foundations.llm_wrapper import LLMWrapper
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
 from app.generation.rag.persistence.database import AsyncSessionLocal
+from app.domain.structured_estimation import StructuredEstimate
 from app.generation.rag.retrieval import (
     EstimateFromTranscriptResult,
     estimate_from_transcript,
+    estimate_structured_from_transcript,
 )
 from app.generation.rag.retrieval.pipeline import RetrievalPipeline
 from app.generation.rag.retrieval.reformulation import reformulate_transcript
@@ -30,6 +32,15 @@ router = APIRouter(prefix="/api/v1", tags=["rag-estimation"])
 class EstimateFromTranscriptRequest(BaseModel):
     transcript: str = Field(..., min_length=10, max_length=60000)
     # None → toma el default de Settings (rag_search_mode / reranking_enabled).
+    search_mode: Literal["vector", "hybrid"] | None = None
+    reranking: bool | None = None
+
+
+class EstimateStructuredRequest(BaseModel):
+    """Request del flujo invertido (S10): esqueleto CAG → horas por-tarea RAG. El
+    search_mode/reranking aplican a la búsqueda de vecinos por-tarea (default per_task_*)."""
+
+    transcript: str = Field(..., min_length=10, max_length=60000)
     search_mode: Literal["vector", "hybrid"] | None = None
     reranking: bool | None = None
 
@@ -85,6 +96,32 @@ async def estimate_from_transcript_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error generando la estimación desde la transcripción",
+        )
+
+
+@router.post("/estimate-structured", response_model=StructuredEstimate)
+async def estimate_structured_endpoint(
+    request: EstimateStructuredRequest,
+) -> StructuredEstimate:
+    """Flujo invertido (S10): genera el esqueleto de módulos/tareas con CAG (sin horas)
+    y deriva las horas por-tarea del histórico (consenso determinista de vecinos +
+    fiabilidad). Conserva intactos /estimate-from-transcript y /retrieve-debug."""
+    settings = get_settings()
+    try:
+        return await estimate_structured_from_transcript(
+            transcript=request.transcript,
+            wrapper=_wrapper(),
+            embedder=LiteLLMEmbedder(),
+            session_factory=AsyncSessionLocal,
+            settings=settings,
+            search_mode=request.search_mode,
+            reranking=request.reranking,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("rag.estimate_structured_failed")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error generando la estimación estructurada",
         )
 
 
