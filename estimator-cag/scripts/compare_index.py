@@ -26,8 +26,8 @@ QUERIES = [
     "integration with external system",
     "migration from monolith to microservices architecture using Kubernetes",
 ]
-FLOAT32_IDX = "chunks_embedding_float32_idx"
-HALFVEC_IDX = "chunks_embedding_halfvec_idx"
+FLOAT32_IDX = "budget_chunks_embedding_float32_idx"
+HALFVEC_IDX = "budget_chunks_embedding_halfvec_idx"
 
 
 async def _index_size(conn, name: str) -> str:
@@ -56,7 +56,7 @@ async def main(k: int, runs: int) -> None:
         await conn.execute(text(f"DROP INDEX IF EXISTS {FLOAT32_IDX}"))
         await conn.execute(
             text(
-                f"CREATE INDEX {FLOAT32_IDX} ON chunks "
+                f"CREATE INDEX {FLOAT32_IDX} ON budget_chunks "
                 f"USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 128)"
             )
         )

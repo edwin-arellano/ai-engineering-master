@@ -1554,3 +1554,78 @@ en producción se toma con esa tabla, no por defecto.
 El reranker añade `sentence-transformers` (+ torch) a la imagen, ralentiza el arranque
 en frío (carga del modelo) y consume memoria permanente: el healthcheck debe esperar a
 que el modelo cargue antes de declarar el servicio listo.
+
+## S10 — RAG avanzado: 3 colecciones, routing, transformación de consulta, ponderación temporal e inversión del flujo
+
+El corpus se particiona en tres colecciones con tablas/índices propios: `budget_chunks`
+(presupuestos; sub-eje overview/tarea vía `chunk_type` budget_component|historical_task),
+`transcript_chunks` (reuniones) y `technical_doc_chunks` (referencia técnica; corpus
+sembrado por `scripts/seed_technical_docs.py`). Cada tabla tiene su índice HNSW half-vec
+(`<tabla>_embedding_halfvec_idx`, mismo operator class `halfvec_cosine_ops`) y su GIN
+tsvector. El mixin `ChunkColumns` evita duplicar columnas; la divergencia real vive en
+las convenciones del JSONB `metadata`, los índices y el ciclo de vida de ingesta. La
+migración `0004` renombra `chunks`→`budget_chunks` (preserva datos) y crea las otras dos.
+
+Un **router en cascada** (`retrieval/router.py`) decide en qué colección(es) buscar por
+coste creciente: explícito (el llamante nombra la colección) → reglas deterministas
+(patrones de vocabulario, coste cero) → clasificador LLM con salida estructurada →
+fallback a todas (degradación elegante). Es el embrión del patrón de delegación agéntica.
+
+La **transformación de consulta** (`retrieval/query_transform.py`) expande (una intención,
+varias formulaciones → fusión por consenso/RRF) o descompone (varias intenciones →
+sub-consultas → cobertura/round-robin con `interleave_rankings`) según el caso, con camino
+directo para consultas nítidas (sin LLM). El **pipeline máximo** (`retrieval/pipeline.py`)
+ordena las etapas como *barato-y-excluyente primero, caro-y-fino al final, blando al
+cierre*: routing → transformación → (por sub-consulta × colección: filtros duros → vector
++ léxica → fusión RRF de ramas) → fusión entre sub-consultas → rerank → **ponderación
+blanda** (decaimiento temporal por año + boosts contextuales, solo desempate). Cada etapa
+es activable por config; con todos los toggles a False y una sola colección replica el
+comportamiento de pre-session-10.
+
+El **flujo de estimación se invierte** (`domain/structured_estimation.py`,
+`retrieval/structure.py`, `retrieval/per_task.py`): primero se genera el esqueleto de
+módulos/tareas con CAG (sin horas, revisable), y luego las horas se derivan **tarea a
+tarea** del histórico (consenso = mediana de `estimated_hours` de los vecinos +
+% de fiabilidad; **sin inferencia del modelo**). Las tareas sin match quedan con
+`needs_human_input=true`. Endpoint `POST /api/v1/estimate-structured`.
+
+### Medición por etapa (`scripts/measure_pipeline.py`)
+
+Sobre el golden set extendido (`scripts/golden_set.json`: 5 casos de budgets + casos por
+colección y un caso multi-tema en `routing_queries`), midiendo contra `/api/v1/retrieve-debug`
+con los nuevos toggles (corpus pequeño, ranking sobre todo el corpus, sin filtro de sector):
+
+| Config | precision@5 | Latencia retrieval (ms) |
+|---|---|---|
+| baseline_vector | 0.28 | 332 |
+| +hybrid | 0.28 | 337 |
+| +rerank | 0.32 | 1384 |
+| +routing | 0.08 | 1555 |
+| +query_transform | 0.28 | 392 |
+| +temporal | 0.28 | 328 |
+| all_stages | 0.08 | 2007 |
+
+**Qué aporta cada técnica (y qué hunde):**
+
+- **Reranking** es el único que mejora precision@5 (0.28→0.32) sobre este corpus, a costa
+  de ~4× latencia. Coincide con la conclusión de pre-S10.
+- **Routing hunde las descripciones de proyecto** (0.28→0.08): el router opera sobre el
+  `search_text` ya reformulado, que destiló el ruido conversacional; un proyecto de
+  e-commerce o banca "parece" técnico/presupuestario y el clasificador LLM lo desvía a
+  `technical_docs`, fuera de budgets. Confirma el aviso del directo: *"el routing ayuda
+  cuando la query señala su tipo, pero hunde descripciones de proyecto"*. **No es
+  universalmente bueno**: actívalo para preguntas que señalan su tipo (coste, qué dijo el
+  cliente, protocolo técnico), no para descripciones de alcance.
+- **Routing accuracy 1/4** en `routing_queries`: el nivel determinista acierta cuando los
+  términos técnicos sobreviven la reformulación (siglas como OAuth/PKCE → technical_docs);
+  los disparadores conversacionales ("cuánto costó", "dijo el cliente") se pierden en la
+  reformulación y el LLM clasifica de forma inconsistente. Lección de diseño: el routing
+  por intención conviene hacerlo sobre la consulta cruda, no sobre el brief denso.
+- **query_transform** y **temporal** son neutros en precisión sobre este corpus (sano:
+  con 5 casos nítidos no hay multi-intención que descomponer ni años que desempaten), con
+  coste casi nulo. Su valor se aprecia en casos multi-tema y corpus con dispersión temporal.
+
+*Nota de cardinalidad/índice:* en un corpus diminuto el planner de PostgreSQL prefiere
+Seq Scan por coste (la alineación operador/índice es correcta — verificable con
+`scripts/seed_synthetic_chunks.py` para forzar el HNSW). *Diferido a futuras sesiones:
+securización del retriever y agentes (módulo de agentes), generación/calidad final (S11).*
