@@ -36,9 +36,15 @@ dependencies = [
 [dependency-groups]
 dev = [
     "alembic>=1.13",
+    "datasets>=2.0",
     "numpy>=2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=0.24",
+    # RAGAS arrastra el stack langchain. La EVALUACIÓN se corre en entorno aislado
+    # (uv run --no-project --with ...) porque la app fija openai 2.x y el juez de RAGAS
+    # necesita el stack langchain con openai 1.x — incompatibles en un mismo proceso.
+    # Ver scripts/measure_ragas.py (fases generate/evaluate) y pre-session-11.md.
+    "ragas>=0.2,<0.3",
     "reportlab>=4.5.1",
     "ruff>=0.15.14",
 ]
