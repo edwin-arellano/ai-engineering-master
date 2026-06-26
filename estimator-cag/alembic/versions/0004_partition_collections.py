@@ -83,6 +83,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Revertir el particionado elimina las colecciones no-budget. La tabla `documents`
+    # es compartida: hay que borrar sus filas de transcript/technical para no dejar
+    # documentos huérfanos (sin chunks) que rompan la idempotencia por source_path al
+    # re-upgrade. Es destructivo a propósito (downgrade revierte a la tabla única budgets).
+    op.execute(
+        "DELETE FROM documents WHERE document_type IN "
+        "('meeting_transcript', 'technical_reference')"
+    )
     for table in _NEW_COLLECTIONS:
         op.execute(f"DROP TABLE IF EXISTS {table}")
     for old, new in _INDEX_RENAMES:

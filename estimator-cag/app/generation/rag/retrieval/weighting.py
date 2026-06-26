@@ -7,6 +7,10 @@ el score de relevancia previo.
 Es la ÚLTIMA etapa del pipeline: 'lo barato y excluyente al principio; lo caro y fino
 al final; lo blando al cierre'. Un multiplicador puede invertir el orden del
 cross-encoder a propósito (un histórico reciente equivalente debe ganar a uno viejo).
+
+La base de relevancia es POSITIVA y monótona: base = 1/(1+distance) en (0,1] (menor
+distancia → mayor relevancia). Así un peso <1 SIEMPRE degrada y uno >1 mejora, sin la
+ambigüedad de signo de usar -distance directamente.
 """
 
 from __future__ import annotations
@@ -50,7 +54,11 @@ def apply_soft_weighting(
     techs = {t.lower() for t in reformulated.technologies}
 
     def score(chunk: RetrievedChunk) -> float:
-        base = -chunk.distance
+        # Relevancia POSITIVA y monótona (menor distancia → mayor relevancia), en (0,1].
+        # Se clampa la distancia a >=0 para robustez (la rama léxica guarda -ts_rank).
+        # Con esta base, un peso <1 SIEMPRE degrada y uno >1 mejora, sin ambigüedad de
+        # signo: weighted = base * weight; se ordena descendente.
+        base = 1.0 / (1.0 + max(chunk.distance, 0.0))
         weight = 1.0
         if settings.temporal_decay_enabled:
             weight *= temporal_weight(
@@ -63,9 +71,7 @@ def apply_soft_weighting(
                 weight *= settings.contextual_tech_boost
             if chunk.metadata.get("client_sector") == reformulated.sector:
                 weight *= settings.contextual_sector_boost
-        # base es negativa (= -distance): un peso <1 debe DEGRADAR (acercar a 0) un
-        # candidato; multiplicar el módulo logra eso sin cambiar el signo del orden.
-        return base * weight if base < 0 else base / max(weight, 1e-6)
+        return base * weight
 
     ranked = sorted(chunks, key=score, reverse=True)
     logger.info(
