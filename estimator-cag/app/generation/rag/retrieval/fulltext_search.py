@@ -7,6 +7,7 @@ from __future__ import annotations
 import structlog
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.generation.rag.persistence.models import BudgetChunkRow, ChunkRow
 from app.generation.rag.persistence.repository import search_chunks_fulltext
 from app.generation.rag.schemas import MetadataFilters, RetrievedChunk
 
@@ -18,11 +19,16 @@ class FullTextSearcher:
         self._session_factory = session_factory
 
     async def search(
-        self, *, query_text: str, k: int, filters: MetadataFilters | None = None
+        self,
+        *,
+        model: type[ChunkRow] = BudgetChunkRow,
+        query_text: str,
+        k: int,
+        filters: MetadataFilters | None = None,
     ) -> list[RetrievedChunk]:
         async with self._session_factory() as session:
             rows = await search_chunks_fulltext(
-                session, query_text=query_text, k=k, filters=filters
+                session, model=model, query_text=query_text, k=k, filters=filters
             )
         chunks = [
             RetrievedChunk(
