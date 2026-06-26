@@ -13,14 +13,14 @@ from app.generation.rag.schemas import (
 )
 
 
-def _chunk(i: int, *, ref: str, content: str) -> RetrievedChunk:
+def _chunk(i: int, *, ref: str, content: str, budget_id: str = "BUD-2024-001") -> RetrievedChunk:
     return RetrievedChunk(
         chunk_id=i,
         document_id=1,
         chunk_type="budget_component",
         content=content,
         distance=0.1 * i,
-        metadata={"chunk_id": ref},
+        metadata={"chunk_id": ref, "budget_id": budget_id},
     )
 
 
@@ -48,6 +48,8 @@ def test_all_chunks_fit_under_large_budget():
     assert ctx.included_refs == ["BUD::C0", "BUD::C1", "BUD::C2"]
     assert ctx.token_count > 0
     assert "source_id: BUD::C0" in ctx.context_block
+    # El bloque expone también el document_id (budget_id) para la atribución por línea (S11).
+    assert "document_id: BUD-2024-001" in ctx.context_block
 
 
 def test_small_budget_drops_chunks_and_keeps_subset():
