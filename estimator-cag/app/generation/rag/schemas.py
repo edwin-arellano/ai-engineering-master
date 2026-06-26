@@ -5,12 +5,23 @@ lista de components. El chunker produce un Chunk por componente.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 Sector = Literal["finance", "ecommerce", "healthcare", "industrial", "other"]
 Complexity = Literal["low", "medium", "high"]
+
+
+class SearchTarget(StrEnum):
+    """Colección particionada del corpus (S10). Cada valor mapea a una tabla ORM
+    vía COLLECTION_MODELS (persistence/collections.py). El router en cascada decide
+    contra cuál(es) buscar; el flujo por-tarea apunta siempre a BUDGETS (explícito)."""
+
+    BUDGETS = "budgets"
+    TRANSCRIPTS = "transcripts"
+    TECHNICAL_DOCS = "technical_docs"
 
 
 class BudgetComponent(BaseModel):
