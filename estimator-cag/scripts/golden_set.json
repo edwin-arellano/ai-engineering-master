@@ -12,6 +12,7 @@
       "query": "Plataforma de e-commerce con catálogo de productos, carrito y panel de administración",
       "relevant_budget_ids": ["BUD-2024-005", "BUD-2023-006"],
       "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): módulos esperados — catálogo de productos con faceted search, carrito y checkout, motor de recomendación, y panel de administración con gestión de productos y pagos. El esfuerzo total debe estar en el orden del de BUD-2024-005 (storefront headless) más el bloque de panel/onboarding de BUD-2023-006 (marketplace multi-vendor). Rango de días-ingeniero defendible: del orden de varias decenas de días-ingeniero repartidos entre los cuatro módulos, con el catálogo y el panel como los más pesados.",
       "note": "BUD-2024-005 (storefront headless: carrito, recomendación, faceted search) es la referencia directa; BUD-2023-006 (marketplace multi-vendor con onboarding/split payments) aporta el panel de administración y pagos."
     },
     {
@@ -19,6 +20,7 @@
       "query": "API de banca móvil con autenticación OAuth 2.0 y cumplimiento PSD2",
       "relevant_budget_ids": ["BUD-2024-001"],
       "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): módulos esperados — backend de autenticación OAuth 2.0, capa de cumplimiento PSD2 (SCA/consentimiento), ledger transaccional y exposición de API segura. El esfuerzo debe alinearse de cerca con BUD-2024-001, que cubre exactamente OAuth 2.0 + PSD2 + ledger. Confianza alta por coincidencia casi literal; los días-ingeniero deben replicar el desglose de ese presupuesto sin inflar componentes no respaldados.",
       "note": "Coincidencia casi literal con BUD-2024-001 (OAuth 2.0 backend + PSD2 compliance + ledger). Caso fácil con identificadores exactos (OAuth, PSD2)."
     },
     {
@@ -26,6 +28,7 @@
       "query": "Integración de pagos con Stripe: suscripciones y webhooks de facturación",
       "relevant_budget_ids": ["BUD-2024-002", "BUD-2023-006"],
       "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): módulos esperados — adaptador de pasarela de pago (suscripciones recurrentes), manejo de webhooks de facturación (idempotencia, reintentos), y conciliación/facturación. El esfuerzo debe anclarse en BUD-2024-002 (payment gateway adapter + fraud scoring) como referencia principal, con el split payment engine de BUD-2023-006 como segunda fuente. Aunque el corpus no nombra 'Stripe', la integración de pasarela es análoga; confianza media por el salto de vocabulario.",
       "note": "BUD-2024-002 (payment gateway adapter + fraud scoring) es la referencia de esfuerzo para una integración de pagos; BUD-2023-006 (split payment engine) es el segundo más cercano. Caso difícil: el corpus no nombra 'Stripe' literalmente."
     },
     {
@@ -33,6 +36,7 @@
       "query": "Plataforma de telemedicina con gestión de citas y notas clínicas",
       "relevant_budget_ids": ["BUD-2024-010", "BUD-2023-009"],
       "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): módulos esperados — videoconsulta y e-prescripción (de BUD-2024-010, telehealth), gestión de citas/agenda y notas clínicas con EHR/HL7-FHIR (de BUD-2023-009). El esfuerzo total debe combinar ambos presupuestos: el bloque de video/prescripción de uno y el de scheduling/EHR del otro. Confianza media-alta: ambos presupuestos cubren el dominio pese al salto de idioma (telemedicina↔telehealth, citas↔appointment).",
       "note": "BUD-2024-010 (telehealth: video consultation + e-prescription) y BUD-2023-009 (appointment scheduling + EHR/HL7-FHIR). Caso de salto cross-lingual: 'telemedicina'/'citas'/'notas clínicas' (ES) vs 'telehealth'/'appointment'/'EHR' (EN) → la léxica 'spanish' apenas casa, la vectorial sí."
     },
     {
@@ -40,6 +44,7 @@
       "query": "Herramienta interna de gestión documental con control de acceso por roles",
       "relevant_budget_ids": ["BUD-2023-015"],
       "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): el corpus NO tiene un presupuesto de gestión documental con RBAC; el análogo más cercano es BUD-2023-015 (LMS: course delivery + adaptive paths), que aporta el patrón de entrega de contenidos con roles. Una estimación honesta debe apoyarse en ese análogo para el control de acceso por roles y marcar como ASUNCIONES (is_assumption=true) los componentes propios de gestión documental (versionado, indexado, búsqueda de documentos) que el contexto no respalda. Confianza baja por cobertura débil; es preferible señalar asunciones a inventar cifras.",
       "note": "Caso difícil / dominio colindante: el corpus no tiene gestión documental con RBAC. BUD-2023-015 (LMS: course delivery + adaptive paths) es el análogo más cercano (entrega de contenidos con roles). Cobertura débil a propósito, para estresar las 4 configs."
     }
   ],
