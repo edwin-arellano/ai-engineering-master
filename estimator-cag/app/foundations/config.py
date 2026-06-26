@@ -46,7 +46,10 @@ class Settings(BaseSettings):
     # Generación RAG-grounded: razonamiento "alto" modelado con temperatura baja + más tokens.
     rag_generation_temperature: float = Field(default=0.2, alias="RAG_GENERATION_TEMPERATURE")
     rag_generation_max_tokens: int = Field(default=8000, alias="RAG_GENERATION_MAX_TOKENS")
-    rag_estimation_prompt_version: str = Field(default="v1", alias="RAG_ESTIMATION_PROMPT_VERSION")
+    # v2: atribución por línea con document_id + evidence literal (S11). v1 queda para rollback/A-B.
+    rag_estimation_prompt_version: str = Field(default="v2", alias="RAG_ESTIMATION_PROMPT_VERSION")
+    # Política ante citas colgantes: False → detectar+reportar+loguear; True → 422 (política dura S11 directo).
+    reject_on_dangling: bool = Field(default=False, alias="REJECT_ON_DANGLING")
     reformulation_prompt_version: str = Field(default="v1", alias="REFORMULATION_PROMPT_VERSION")
 
     # === Retrieval avanzado (S10): híbrida + reranking ===
