@@ -74,12 +74,19 @@ class EmbeddedChunk(Chunk):
 
 
 class DocumentIngestRequest(BaseModel):
-    """Contrato nuevo de /embeddings/ingest: un documento (un presupuesto) por llamada."""
+    """Contrato de /embeddings/ingest. Por defecto ingesta un presupuesto a la colección
+    de budgets (back-compat). Con `collection` != budgets ingesta texto plano
+    (`content_text`) a la colección transcripts/technical correspondiente (S10)."""
 
     source_path: str = Field(min_length=1)
     document_type: str = "historical_budget"
-    # JSON completo del presupuesto; se valida contra Budget en el endpoint.
-    content: dict[str, Any]
+    # Colección destino (S10). Default BUDGETS = camino histórico sin cambios.
+    collection: SearchTarget = SearchTarget.BUDGETS
+    # JSON completo del presupuesto (solo colección budgets); se valida contra Budget.
+    content: dict[str, Any] | None = None
+    # Texto plano (solo colecciones transcripts/technical_docs): se trocea con el
+    # chunker de texto de la colección.
+    content_text: str | None = None
     # Estrategia de chunking a aplicar (S09). Default back-compat: "structural"
     # (un chunk por componente → chunk_type=budget_component). "historical_task"
     # produce un chunk por tarea atómica → chunk_type=historical_task.
