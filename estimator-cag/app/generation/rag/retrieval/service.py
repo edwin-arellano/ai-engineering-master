@@ -24,6 +24,14 @@ from app.generation.rag.retrieval.generation import generate_rag_estimate
 from app.generation.rag.retrieval.per_task import estimate_task_hours
 from app.generation.rag.retrieval.pipeline import RetrievalPipeline
 from app.generation.rag.retrieval.reformulation import reformulate_transcript
+from app.generation.rag.quality import (
+    DegradationReport,
+    anchor_line,
+    apply_gate,
+    gate_line,
+    judge_lines,
+    synthesize_range,
+)
 from app.generation.rag.retrieval.structure import generate_skeleton
 from app.generation.rag.retrieval.verification import (
     CitationReport,
@@ -57,6 +65,7 @@ class EstimateFromTranscriptResult(BaseModel):
     context_tokens: int
     citation_report: CitationReport  # informe estructural de citaciones (S11)
     invalid_citations: list[str]  # back-compat = citation_report.dangling
+    degradation_report: DegradationReport  # informe del gate de alucinaciones (S11)
     search_time_ms: int
     # Config efectiva que corrió (trazabilidad de las 4 configuraciones A/B/C/D).
     search_mode: str
@@ -107,6 +116,69 @@ async def estimate_from_transcript(
             f"citas colgantes (no estuvieron en el contexto): {report.dangling}"
         )
 
+    # 6. Gate de alucinaciones (ancla numérica + juez) → degradar líneas a cero.
+    degradation = DegradationReport(
+        total_lines=0, degraded_lines=0, verified_lines=0, gates=[]
+    )
+    if settings.hallucination_gate_enabled:
+        lines: list[dict] = []
+        anchors: dict[int, object] = {}
+        assumptions: dict[int, bool] = {}
+        idx = 0
+        for module in estimate.modules:
+            for task in module.tasks:
+                evidence = task.sources[0].evidence if task.sources else ""
+                anchors[idx] = anchor_line(
+                    line_engineer_days=task.engineer_days,
+                    evidence=evidence,
+                    hours_per_day=settings.hours_per_engineer_day,
+                    tolerance=settings.numeric_deviation_tolerance,
+                )
+                assumptions[idx] = task.is_assumption
+                lines.append(
+                    {
+                        "index": idx,
+                        "title": task.title,
+                        "engineer_days": task.engineer_days,
+                        "evidence": evidence,
+                    }
+                )
+                idx += 1
+        verdicts = (
+            await judge_lines(lines=lines, wrapper=wrapper, settings=settings)
+            if settings.judge_enabled
+            else {}
+        )
+        gates = {
+            i: gate_line(
+                index=i,
+                is_assumption=assumptions[i],
+                anchor=anchors[i],
+                verdict=verdicts.get(i),
+            )
+            for i in anchors
+        }
+        estimate, degradation = apply_gate(estimate, gates)
+
+    # 7. Síntesis de rangos por línea (single-pass): rango desde las fuentes citadas.
+    if settings.synthesis_enabled:
+        by_ref = {c.chunk_ref: c for c in retrieval.chunks}
+        for module in estimate.modules:
+            for task in module.tasks:
+                hours = [
+                    by_ref[s.source_id].metadata.get("estimated_hours")
+                    for s in task.sources
+                    if s.source_id in by_ref
+                ]
+                rng = synthesize_range(
+                    [float(h) for h in hours if h is not None],
+                    wrapper=wrapper,
+                    settings=settings,
+                    context=task.title,
+                )
+                if rng is not None:
+                    task.hour_range = rng
+
     return EstimateFromTranscriptResult(
         estimate=estimate,
         retrieved_chunks=len(retrieval.chunks),
@@ -114,6 +186,7 @@ async def estimate_from_transcript(
         context_tokens=context.token_count,
         citation_report=report,
         invalid_citations=report.dangling,
+        degradation_report=degradation,
         search_time_ms=retrieval.search_time_ms,
         search_mode=search_mode,
         reranking=reranking,
