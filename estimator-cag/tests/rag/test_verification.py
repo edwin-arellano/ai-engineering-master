@@ -25,11 +25,15 @@ def _context(refs: list[str]) -> AugmentedContext:
     )
 
 
+def _cite(source_id: str) -> Citation:
+    return Citation(source_id=source_id, document_id="BUD-2024-001", evidence="5 días")
+
+
 def _estimate_with_sources(source_ids: list[str]) -> RagEstimate:
     task = RagTask(
         title="Auth backend",
         engineer_days=5.0,
-        sources=[Citation(source_id=s) for s in source_ids],
+        sources=[_cite(s) for s in source_ids],
     )
     return RagEstimate(
         confidence=Confidence.HIGH,
@@ -44,14 +48,17 @@ def _estimate_with_sources(source_ids: list[str]) -> RagEstimate:
 
 def test_verify_citations_flags_invented_source():
     estimate = _estimate_with_sources(["BUD::REAL", "BUD::FAKE"])
-    invalid = verify_citations(estimate, _context(["BUD::REAL"]))
-    assert invalid == ["BUD::FAKE"]
+    report = verify_citations(estimate, _context(["BUD::REAL"]))
+    assert report.dangling == ["BUD::FAKE"]
+    assert report.grounded_lines == 0  # la tarea tiene una cita colgante
 
 
 def test_verify_citations_no_false_positives_when_all_present():
     estimate = _estimate_with_sources(["BUD::A", "BUD::B"])
-    invalid = verify_citations(estimate, _context(["BUD::A", "BUD::B", "BUD::C"]))
-    assert invalid == []
+    report = verify_citations(estimate, _context(["BUD::A", "BUD::B", "BUD::C"]))
+    assert report.dangling == []
+    assert report.grounded_lines == 1
+    assert report.total_lines == 1
 
 
 def test_enforce_confidence_coherence_passes_for_insufficient():
@@ -84,7 +91,7 @@ def test_insufficient_with_modules_is_rejected():
                         RagTask(
                             title="t",
                             engineer_days=1.0,
-                            sources=[Citation(source_id="BUD::A")],
+                            sources=[_cite("BUD::A")],
                         )
                     ],
                 )
@@ -105,7 +112,7 @@ def test_totals_must_match_sum_of_tasks():
                         RagTask(
                             title="t",
                             engineer_days=3.0,
-                            sources=[Citation(source_id="BUD::A")],
+                            sources=[_cite("BUD::A")],
                         )
                     ],
                 )
@@ -125,7 +132,7 @@ def test_totals_within_tolerance_are_accepted():
                     RagTask(
                         title="t",
                         engineer_days=3.0,
-                        sources=[Citation(source_id="BUD::A")],
+                        sources=[_cite("BUD::A")],
                     )
                 ],
             )

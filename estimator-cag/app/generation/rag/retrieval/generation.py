@@ -27,7 +27,8 @@ def generate_rag_estimate(
         f"<brief>\n{reformulated.model_dump_json(indent=2)}\n</brief>\n\n"
         f"<context_blocks>\n{context.context_block}\n</context_blocks>\n\n"
         "Genera la estimación basándote ÚNICAMENTE en los context_blocks. "
-        "Cita los source_id de los que deriva cada tarea."
+        "Por cada tarea con evidencia, cita en `sources` el `source_id` y el `document_id` "
+        "del bloque y copia en `evidence` el fragmento o cifra LITERAL que la respalda."
     )
     estimate = wrapper.complete_structured(
         system_prompt=system_prompt,
