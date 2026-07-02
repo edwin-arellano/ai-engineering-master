@@ -31,3 +31,4 @@ data/seed/
 
 # Artefacto intermedio del arnés RAGAS (regenerable con measure_ragas.py generate)
 scripts/ragas_rows.json
+scripts/eval_rows.json

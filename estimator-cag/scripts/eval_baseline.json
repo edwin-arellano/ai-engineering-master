@@ -1,0 +1,7 @@
+{
+  "_comment": "Baseline RAGAS del path single-pass (promedios sobre el golden set de 5 consultas), generado con scripts/measure_ragas.py en pre-session-11. El modo gate de eval_generation.py usa floor = baseline - 0.05 para fallar CI ante regresiones. Regenerar cuando el corpus o el golden set cambien de forma legítima.",
+  "faithfulness": 0.596,
+  "answer_relevancy": 0.148,
+  "context_precision": 0.682,
+  "context_recall": 0.4
+}
