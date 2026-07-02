@@ -93,6 +93,12 @@ class Settings(BaseSettings):
         default="v1", alias="SYNTHESIS_REASON_PROMPT_VERSION"
     )
 
+    # === Curación del corpus (S11): gate de indexabilidad en la ingesta ===
+    enforce_indexability_gate: bool = Field(
+        default=True, alias="ENFORCE_INDEXABILITY_GATE",
+        description="No vectorizar excepciones/casos límite (garbage-in-garbage-out).",
+    )
+
     # === Retrieval avanzado (S10): híbrida + reranking ===
     rag_search_mode: str = Field(
         default="vector", alias="RAG_SEARCH_MODE",

@@ -98,6 +98,8 @@ class DocumentIngestResponse(BaseModel):
     chunks_created: int
     embedding_dimension: int
     ingestion_time_ms: int
+    # S11 (curación): chunks descartados por el gate de indexabilidad (no vectorizados).
+    skipped_non_indexable: int = 0
 
 
 class SearchRequest(BaseModel):

@@ -16,6 +16,7 @@ from app.generation.rag.quality.gate import (
     apply_gate,
     gate_line,
 )
+from app.generation.rag.quality.curation import IndexabilityVerdict, is_indexable
 from app.generation.rag.quality.judge import JudgeVerdicts, LineVerdict, judge_lines
 from app.generation.rag.quality.numeric_anchor import AnchorResult, anchor_line
 from app.generation.rag.quality.synthesis import synthesize_range
@@ -31,4 +32,6 @@ __all__ = [
     "gate_line",
     "apply_gate",
     "synthesize_range",
+    "IndexabilityVerdict",
+    "is_indexable",
 ]
