@@ -38,6 +38,18 @@ class Citation(BaseModel):
     evidence: str = Field(..., min_length=1, max_length=500)
 
 
+class HourRange(BaseModel):
+    """Rango honesto cuando varias fuentes fiables discrepan sin contradecirse (S11).
+    El número (min/max/dispersión) es DETERMINISTA; solo la `reason` puede venir de un
+    mini LLM barato para orientar al humano que fijará la cifra final."""
+
+    model_config = ConfigDict(extra="forbid")
+    min: float = Field(..., ge=0)
+    max: float = Field(..., ge=0)
+    reason: str = Field(..., min_length=1, max_length=500)
+    dispersion: float = Field(..., ge=0)  # coeficiente de variación de los vecinos
+
+
 class RagTask(BaseModel):
     """Línea de estimación. `grounded ≡ not is_assumption`: una tarea fundamentada
     (is_assumption=False) cita ≥1 fuente verificable del contexto; una asunción
@@ -50,6 +62,8 @@ class RagTask(BaseModel):
     # Tareas basadas en evidencia: >=1 source. Asunciones: lista vacía + is_assumption=True.
     sources: list[Citation] = Field(default_factory=list)
     is_assumption: bool = False
+    # Rango sintetizado (si las fuentes citadas discrepan sin contradicción). Opcional (S11).
+    hour_range: HourRange | None = None
 
     @model_validator(mode="after")
     def evidence_or_assumption(self) -> "RagTask":

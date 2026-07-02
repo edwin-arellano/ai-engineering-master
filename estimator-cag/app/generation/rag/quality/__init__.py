@@ -18,6 +18,7 @@ from app.generation.rag.quality.gate import (
 )
 from app.generation.rag.quality.judge import JudgeVerdicts, LineVerdict, judge_lines
 from app.generation.rag.quality.numeric_anchor import AnchorResult, anchor_line
+from app.generation.rag.quality.synthesis import synthesize_range
 
 __all__ = [
     "AnchorResult",
@@ -29,4 +30,5 @@ __all__ = [
     "DegradationReport",
     "gate_line",
     "apply_gate",
+    "synthesize_range",
 ]

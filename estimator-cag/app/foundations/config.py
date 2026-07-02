@@ -79,6 +79,20 @@ class Settings(BaseSettings):
     judge_enabled: bool = Field(default=True, alias="JUDGE_ENABLED")
     judge_prompt_version: str = Field(default="v1", alias="JUDGE_PROMPT_VERSION")
 
+    # === Calidad de generación (S11): síntesis de rangos honestos ===
+    synthesis_enabled: bool = Field(
+        default=False, alias="SYNTHESIS_ENABLED",
+        description="Sintetiza HourRange por línea desde las horas de las fuentes citadas.",
+    )
+    contradiction_cv_threshold: float = Field(
+        default=0.5, alias="CONTRADICTION_CV_THRESHOLD",
+        description="Coef. de variación por encima del cual se descarta la síntesis (contradicción).",
+    )
+    synthesis_reason_enabled: bool = Field(default=True, alias="SYNTHESIS_REASON_ENABLED")
+    synthesis_reason_prompt_version: str = Field(
+        default="v1", alias="SYNTHESIS_REASON_PROMPT_VERSION"
+    )
+
     # === Retrieval avanzado (S10): híbrida + reranking ===
     rag_search_mode: str = Field(
         default="vector", alias="RAG_SEARCH_MODE",
