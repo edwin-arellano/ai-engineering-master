@@ -88,8 +88,10 @@ async def estimate_from_transcript(
         search_mode=search_mode, reranking=reranking,
     )
 
-    # 3. Augmentation (token budget).
-    context = assemble_context(retrieval, max_tokens=settings.rag_max_context_tokens)
+    # 3. Augmentation (token budget + capa de calidad S11 opt-in: compresión/reorden).
+    context = assemble_context(
+        retrieval, max_tokens=settings.rag_max_context_tokens, settings=settings
+    )
 
     # 4. Generación RAG-grounded.
     estimate = generate_rag_estimate(

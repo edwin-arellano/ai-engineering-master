@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     reject_on_dangling: bool = Field(default=False, alias="REJECT_ON_DANGLING")
     reformulation_prompt_version: str = Field(default="v1", alias="REFORMULATION_PROMPT_VERSION")
 
+    # === Calidad de generación (S11): augmentation. Todo off → comportamiento pre-S11. ===
+    context_compression_enabled: bool = Field(
+        default=False, alias="CONTEXT_COMPRESSION_ENABLED",
+        description="Compresión extractiva determinista de cada chunk (limpia el vector).",
+    )
+    keypoint_max_chars: int = Field(default=600, alias="KEYPOINT_MAX_CHARS")
+    reorder_by_edges_enabled: bool = Field(
+        default=False, alias="REORDER_BY_EDGES_ENABLED",
+        description="Reorden por extremos contra el 'lost-in-the-middle'.",
+    )
+
     # === Retrieval avanzado (S10): híbrida + reranking ===
     rag_search_mode: str = Field(
         default="vector", alias="RAG_SEARCH_MODE",
