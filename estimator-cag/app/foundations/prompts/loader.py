@@ -221,6 +221,24 @@ def render_rag_estimation_prompt(version: str = "v1") -> str:
     return _env.get_template(f"rag_estimation/{version}/system.j2").render()
 
 
+def render_judge_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt del juez de alucinaciones (S11).
+
+    Solo system: el user message lleva las líneas de la estimación (índice, tarea,
+    días, evidencia). Ver ``app.generation.rag.quality.judge.judge_lines``.
+    """
+    return _env.get_template(f"judge/{version}/system.j2").render()
+
+
+def render_synthesis_reason_prompt(version: str = "v1") -> str:
+    """Renderiza el system prompt de la explicación de rango de síntesis (S11).
+
+    Solo system: el mini LLM SOLO explica el rango al humano (no calcula el número).
+    Ver ``app.generation.rag.quality.synthesis.synthesize_range``.
+    """
+    return _env.get_template(f"synthesis_reason/{version}/system.j2").render()
+
+
 def render_summarizer_prompt(
     *,
     transcript_block: str,

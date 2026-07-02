@@ -63,6 +63,22 @@ class Settings(BaseSettings):
         description="Reorden por extremos contra el 'lost-in-the-middle'.",
     )
 
+    # === Calidad de generación (S11): gate de alucinaciones ===
+    hallucination_gate_enabled: bool = Field(
+        default=False, alias="HALLUCINATION_GATE_ENABLED",
+        description="Ancla numérica + juez → degradar líneas no sostenidas a cero.",
+    )
+    hours_per_engineer_day: float = Field(
+        default=8.0, alias="HOURS_PER_ENGINEER_DAY",
+        description="Conversión días↔horas del ancla numérica (fricción de unidades).",
+    )
+    numeric_deviation_tolerance: float = Field(
+        default=0.25, alias="NUMERIC_DEVIATION_TOLERANCE",
+        description="Desviación relativa máxima línea-vs-evidencia antes de degradar.",
+    )
+    judge_enabled: bool = Field(default=True, alias="JUDGE_ENABLED")
+    judge_prompt_version: str = Field(default="v1", alias="JUDGE_PROMPT_VERSION")
+
     # === Retrieval avanzado (S10): híbrida + reranking ===
     rag_search_mode: str = Field(
         default="vector", alias="RAG_SEARCH_MODE",
