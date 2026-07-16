@@ -1742,7 +1742,55 @@ abstractiva vía LLM queda opcional (implementada la extractiva, determinista-pr
 
 ---
 
-## Agente de estimación (S12)
+## Agente de estimación híbrido (S12)
+
+El agente **no sustituye** el flujo determinista: entra solo en las dos fases donde aporta.
+Darle el proyecto entero (el one-shot de abajo) da menos control y peores resultados; la
+búsqueda vectorial, en cambio, ya es barata, reproducible y buena. Así que el flujo
+estructurado de S10 se mantiene intacto y el agente lo **envuelve** en dos puntos.
+
+**Fase 1 — `POST /api/v1/agent/propose-structure`** — `{transcript, model?}` →
+`{skeleton, agent_trace}`. Neo (`gpt-5`, **sin tools, un solo step**) propone los módulos y
+tareas reutilizando `EstimateSkeleton`, el mismo contrato del flujo determinista. Detrás va
+la **puerta humana**: el cliente valida o edita la estructura. Son dos endpoints y no uno
+precisamente para que quepa esa revisión.
+
+**Fase 2 — `POST /api/v1/agent/estimate-task-hours`** — `{skeleton, model?, stub?}` →
+`StructuredEstimate` + `agent_trace`. Tres pasos:
+
+1. El **retrieval determinista** de S10 (`per_task.estimate_task_hours`) estima cada tarea
+   por mediana de vecinos históricos. Se invoca tal cual, sin modificar.
+2. Un **flagging determinista** (`flagging.py`, sin LLM) marca las dudosas en `flag_reason`:
+   sin match, fiabilidad baja, o fuentes en conflicto (coeficiente de variación ≥
+   `AGENT_FLAG_DISPERSION_THRESHOLD`, reutilizando la vara de la síntesis de S11).
+3. El **bucle agéntico** (`recovery_agent.py`) entra **solo en las flaggeadas**, una por una
+   y en paralelo, con `search_budgets`: puede reformular la consulta una vez, razona el
+   consenso cuando las fuentes discrepan (16h vs 60h → un número defendible + el desacuerdo
+   anotado) y **nunca inventa** — sin evidencia devuelve `suggested_hours=null`,
+   `reliability=none` y lo reporta.
+
+**Traza** (`AgentTrace` en `domain/agent_trace.py`): no es un log, es qué decidió el agente,
+qué hizo y cómo llegó ahí (`step`, `reasoning`, `action`, `args`, `observation`). Se
+**adjunta** a los modelos existentes en vez de reemplazarlos, va logueada por structlog
+correlada por `request_id`, y se devuelve en la respuesta. Fase 1 → 1 step; fase 2 → el
+bucle completo. No persiste en BD (en producción iría a un bucket: S3).
+
+- **Config**: `AGENT_PROFILE_NAME` (perfil único "neo"), `STRUCTURE_AGENT_PROMPT_VERSION`,
+  `RECOVERY_AGENT_PROMPT_VERSION` (prompts versionados **por agente** en
+  `prompts/agents/<perfil>/<fase>/<version>/`), `AGENT_FLAG_DISPERSION_THRESHOLD`,
+  `AGENT_RECOVERY_ENABLED` (OFF ⇒ determinista + flags, para medir cuánto aporta el agente),
+  `AGENT_RECOVERY_MAX_STEPS` (presupuesto por tarea flaggeada).
+- **Cobertura**: `with_history` cuenta tareas **con horas**. En el flujo determinista es
+  equivalente a `not needs_human_input`; tras la recuperación no, porque una tarea recuperada
+  con fiabilidad baja tiene horas *y* necesita revisión.
+
+*Diferido a S13/S14 (orquestación): multi-agente y handover, perfiles en paralelo
+(Neo/Trinity) con umbral y `top_k` propios, auto-validación de la estructura, agente auditor
+de trazas, persistencia a bucket y `web_search` como tool de recuperación.*
+
+### One-shot (baseline de comparación)
+
+Se conserva **intacto** como contraste pedagógico del approach descartado en producción.
 
 Agente manual (bucle razona→actúa→observa, sin framework) sobre la Responses API de
 OpenAI (`gpt-5`, esfuerzo `medium`). Descompone una transcripción en componentes, busca
