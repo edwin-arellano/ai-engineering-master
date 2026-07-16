@@ -176,6 +176,28 @@ class Settings(BaseSettings):
         description="Nº de vecinos cercanos para fiabilidad 'high'.",
     )
 
+    # === S12: Agente (Responses API nativa de OpenAI; NO pasa por el Router de LiteLLM) ===
+    agent_model: str = Field(default="gpt-5", alias="AGENT_MODEL")
+    agent_debug_model: str = Field(default="gpt-5-mini", alias="AGENT_DEBUG_MODEL")
+    agent_reasoning_effort: str = Field(default="medium", alias="AGENT_REASONING_EFFORT")
+    # "auto" para capturar reasoning summaries en la traza; "detailed"/"concise" también valen.
+    agent_reasoning_summary: str = Field(default="auto", alias="AGENT_REASONING_SUMMARY")
+    agent_max_steps: int = Field(default=8, alias="AGENT_MAX_STEPS")
+    # Recorte del top-k que ve el modelo por búsqueda (observación de alto valor, no volcado crudo).
+    agent_search_top_k: int = Field(default=5, alias="AGENT_SEARCH_TOP_K")
+    agent_search_mode: str = Field(default="hybrid", alias="AGENT_SEARCH_MODE")
+    agent_reranking: bool = Field(default=True, alias="AGENT_RERANKING")
+    # calculate_estimate: buffer de contingencia plano y transparente (sin multiplicadores ocultos).
+    agent_contingency_factor: float = Field(default=0.15, alias="AGENT_CONTINGENCY_FACTOR")
+    # validate_estimate (extensión opcional). Toggle ON por defecto.
+    agent_validate_enabled: bool = Field(default=True, alias="AGENT_VALIDATE_ENABLED")
+    agent_validate_tolerance_hours: float = Field(
+        default=0.5, alias="AGENT_VALIDATE_TOLERANCE_HOURS"
+    )
+    agent_validate_max_component_hours: float = Field(
+        default=5000.0, alias="AGENT_VALIDATE_MAX_COMPONENT_HOURS"
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None

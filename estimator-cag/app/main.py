@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.foundations.logging_config import configure_logging, request_id_middleware
-from app.api.routers import embeddings, ingestion, rag_estimation, search, sessions
+from app.api.routers import agentic, embeddings, ingestion, rag_estimation, search, sessions
 from app.generation.rag.persistence.database import engine
 
 # IMPORTANTE: configurar logging ANTES de instanciar FastAPI para que los logs
@@ -45,6 +45,7 @@ app.include_router(ingestion.router)
 app.include_router(embeddings.router)  # prefix /embeddings vive en el router
 app.include_router(search.router)
 app.include_router(rag_estimation.router)  # prefix /api/v1 vive en el router
+app.include_router(agentic.router)  # prefix /api/v1 vive en el router
 
 
 @app.get("/health", tags=["meta"])
