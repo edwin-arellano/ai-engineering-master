@@ -63,11 +63,14 @@ def build_system_prompt(settings: Settings) -> str:
     )
 
 
-def _partition_output(response) -> tuple[str, list]:
+def partition_output(response) -> tuple[str, list]:
     """Extrae (reasoning_summary_del_turno, [function_call...]) de response.output.
 
     La salida de la Responses API es una lista de items tipados; hay que recorrerla e
     inspeccionar por `type`, no asumir posiciones. Los items `reasoning` traen `summary`.
+
+    Público desde S12: lo reutilizan `agent_loop` y `structure_agent` (el mismo recorrido
+    sirve para el one-shot y para las dos fases del flujo híbrido).
     """
     reasoning_texts: list[str] = []
     calls: list = []
@@ -110,7 +113,7 @@ async def run_agent(
     )
 
     for _ in range(settings.agent_max_steps):
-        turn_reasoning, calls = _partition_output(response)
+        turn_reasoning, calls = partition_output(response)
         if not calls:
             # Sin más tools: el modelo ha producido la respuesta final estructurada.
             logger.info("agent.final", reasoning=turn_reasoning, steps=len(trace))

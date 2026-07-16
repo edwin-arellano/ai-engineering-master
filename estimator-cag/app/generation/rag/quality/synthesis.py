@@ -22,7 +22,13 @@ class _Reason(BaseModel):
     reason: str
 
 
-def _coefficient_of_variation(values: list[float]) -> float:
+def coefficient_of_variation(values: list[float]) -> float:
+    """Dispersión relativa (σ/μ) de un conjunto de horas. Determinista, sin LLM.
+
+    Público desde S12: el flagging del flujo híbrido mide con la MISMA vara la discrepancia
+    entre vecinos históricos, aunque decida otra cosa con ella (marcar la tarea para el
+    agente en vez de descartar la síntesis).
+    """
     m = mean(values)
     return pstdev(values) / m if m > 0 else 0.0
 
@@ -38,7 +44,7 @@ def synthesize_range(
     values = [h for h in hours if h is not None and h >= 0]
     if len(values) < 2:
         return None
-    cv = _coefficient_of_variation(values)
+    cv = coefficient_of_variation(values)
     if cv > settings.contradiction_cv_threshold:
         logger.info("synthesis.contradiction_discarded", cv=round(cv, 3), n=len(values))
         return None  # contradicción: no sintetizar

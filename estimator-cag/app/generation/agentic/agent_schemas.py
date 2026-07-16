@@ -8,9 +8,14 @@ bucle, contrato de salida determinista). Es un contrato PROPIO del agente, disti
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# AgentStep se movió a domain/ (S12): lo comparten el one-shot y las dos fases del flujo
+# híbrido, y `domain` no puede depender de `generation`. Se reexporta para que los
+# importadores de este módulo sigan funcionando sin cambios.
+from app.domain.agent_trace import AgentStep
 
 
 class ComponentEstimate(BaseModel):
@@ -35,17 +40,6 @@ class AgentEstimate(BaseModel):
     notes: str
 
 
-class AgentStep(BaseModel):
-    """Una vuelta ejecutada del bucle: razonamiento (reasoning summary del turno) +
-    acción (tool) + observación (resultado). Es la ventana de depuración del agente."""
-
-    step: int
-    reasoning: str  # reasoning summary del turno (puede ir vacío si el modelo no lo emite)
-    action: str  # nombre de la tool
-    args: dict[str, Any]
-    observation: dict[str, Any]
-
-
 class AgentResult(BaseModel):
     """Resultado del bucle. `status` separa éxito de agotamiento; el backend de negocio
     enruta por él (done → guardar; max_steps_exceeded → revisión manual)."""
@@ -54,3 +48,6 @@ class AgentResult(BaseModel):
     estimate: AgentEstimate | None
     trace: list[AgentStep]
     steps: int
+
+
+__all__ = ["AgentEstimate", "AgentResult", "AgentStep", "ComponentEstimate"]

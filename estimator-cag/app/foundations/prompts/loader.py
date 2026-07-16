@@ -212,6 +212,29 @@ def render_estimation_skeleton_prompt(version: str = "v1") -> str:
     return _env.get_template(f"estimation_skeleton/{version}/system.j2").render()
 
 
+def render_structure_agent_prompt(version: str = "v1", *, agent: str = "neo") -> str:
+    """Renderiza el system prompt del agente de estructura, fase 1 del flujo híbrido (S12).
+
+    Solo system: el user message es la transcripción de la reunión (ver
+    ``app.generation.agentic.structure_agent.propose_structure``).
+
+    A diferencia del resto de familias, los prompts de agente se versionan POR AGENTE
+    (``agents/<agent>/<fase>/<version>/``): el perfil forma parte de la identidad del
+    prompt, no un parámetro suelto. En S12 solo existe el perfil "neo"; el multi-perfil
+    (Neo/Trinity en paralelo) queda para S13/S14 y ya tiene aquí su punto de extensión.
+    """
+    return _env.get_template(f"agents/{agent}/structure/{version}/system.j2").render()
+
+
+def render_recovery_agent_prompt(version: str = "v1", *, agent: str = "neo") -> str:
+    """Renderiza el system prompt del agente de recuperación, fase 2b del flujo híbrido (S12).
+
+    Solo system: el user message describe UNA tarea flaggeada y su razón de flag (ver
+    ``app.generation.agentic.recovery_agent.run_task_hours_recovery_agent``).
+    """
+    return _env.get_template(f"agents/{agent}/recovery/{version}/system.j2").render()
+
+
 def render_rag_estimation_prompt(version: str = "v1") -> str:
     """Renderiza el system prompt de la generación RAG-grounded (S09).
 
