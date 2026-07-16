@@ -31,6 +31,10 @@ dependencies = [
     "asyncpg>=0.29",
     "pgvector>=0.3",
     "sentence-transformers>=5.6.0",
+    "langgraph>=1.2.2",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "logfire[asyncpg,fastapi,httpx]>=4.37.0",
+    "psycopg[binary,pool]>=3.3.4",
 ]
 
 [dependency-groups]
@@ -48,6 +52,11 @@ dev = [
     "reportlab>=4.5.1",
     "ruff>=0.15.14",
 ]
+
+[tool.logfire]
+# La app configura Logfire en el lifespan (S13). En tests los nodos corren fuera de él,
+# y sin esto cada span emite un LogfireNotConfiguredWarning que solo añade ruido.
+ignore_no_config = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

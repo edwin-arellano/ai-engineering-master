@@ -1826,3 +1826,53 @@ agente prefiere anclarse a lo que encuentra antes que inventar números.
 variantes de patrón (single-step vs iterativo, plan fijo vs dinámico), medición de coste
 por paso y adelgazamiento del estado acumulado. `needs_review` (handover a humano) queda
 como extensión futura: el bucle solo emite `done` / `max_steps_exceeded`.*
+
+## Orquestación con LangGraph (S13)
+
+El flujo de estimación S9–S12 se expone también como un **grafo LangGraph secuencial**
+en `app/generation/graph/`, sin sustituir la capa agéntica manual de S12.
+
+- **Endpoint:** `POST /api/v1/graph/estimate` → `{estimate, status, thread_id}`.
+- **Grafo:** `extract_requirements → classify_components → search_budgets →
+  generate_estimate → validate_and_consolidate`. Cada nodo envuelve la lógica real
+  existente (reformulación, esqueleto CAG, retrieval determinista por-tarea, flagging
+  y recuperación agéntica). `search_budgets` va secuencial (el directo lo paraleliza
+  con Send API).
+- **Estado:** `EstimationState` (`TypedDict`) con reducer acumulador
+  `task_estimates: Annotated[list[TaskEstimate], operator.add]`.
+- **Persistencia:** checkpointer `AsyncPostgresSaver` sobre el mismo Postgres del
+  proyecto (DSN psycopg derivado de `DATABASE_URL`). `thread_id` = id de la estimación.
+  Sus tablas se crean con `setup()` al arranque, fuera de Alembic.
+- **Observabilidad:** Logfire (`instrument_fastapi/asyncpg/httpx`), un span por nodo.
+  Con `LOGFIRE_TOKEN` va al dashboard; sin él, a consola. Convive con structlog.
+- **Nivel 3 (opcional):** `GRAPH_CONDITIONAL_VALIDATION=true` activa la arista
+  condicional en validación (`validated` | `needs_review`).
+
+Variables de entorno nuevas: `GRAPH_CONDITIONAL_VALIDATION` (default `false`),
+`LOGFIRE_ENABLED` (default `true`), `LOGFIRE_SERVICE_NAME`, opcional `LOGFIRE_TOKEN`.
+
+```bash
+# Unit (sin infra): nodos, reducer y orquestación con dobles.
+uv run pytest tests/test_graph_estimation.py -m "not integration" -q
+
+# E2E sobre la transcripción compleja (requiere docker compose up -d + OPENAI_API_KEY):
+uv run uvicorn app.main:app --reload
+curl -s -X POST localhost:8000/api/v1/graph/estimate \
+  -H 'content-type: application/json' \
+  -d @<(uv run python -c "import json,pathlib;print(json.dumps({'transcript':pathlib.Path('examples/transcripts/sample_transcript_complex.txt').read_text(),'estimation_id':'demo-s13'}))") \
+  | python -m json.tool
+```
+
+*Traza verificada sobre `examples/transcripts/sample_transcript_complex.txt`
+(`thread_id=demo-s13`): los 5 spans `node: *` en orden, 4 módulos / 17 tareas,
+`status=needs_review` (12 de 17 tareas sin historia en el corpus) y 7 checkpoints
+persistidos en el thread.*
+
+*El checkpointer serializa los modelos del dominio (`StructuredEstimate`, `TaskEstimate`,
+`ReformulatedQuery`…) como tipos no registrados: LangGraph 1.2 lo permite con un aviso y
+anuncia bloquearlo en una versión futura. El remedio, cuando toque, es pasar un serde
+explícito (`JsonPlusSerializer(allowed_msgpack_modules=[...])`) a `from_conn_string`.*
+
+*Diferido al directo: paralelización de `search_budgets` con Send API, manejo de errores
+avanzado (reintentos, fallback, timeouts — `errors` ya está en el estado como acumulador),
+HITL con `interrupt()` en la validación y optimización a partir de la traza.*
