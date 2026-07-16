@@ -19,6 +19,8 @@ def configure_logfire(app, settings: Settings) -> None:
 
     logfire.configure(
         service_name=settings.logfire_service_name,
+        # El token viaja por Settings (None ⇒ Logfire cae a su env var, si la hubiera).
+        token=settings.logfire_token or None,
         send_to_logfire="if-token-present",
     )
     # Cada instrumentación depende de su paquete OTel opcional. Un fallo aquí no debe

@@ -246,6 +246,16 @@ class Settings(BaseSettings):
         alias="LOGFIRE_SERVICE_NAME",
         description="service_name reportado por Logfire.",
     )
+    logfire_token: str | None = Field(
+        default=None,
+        alias="LOGFIRE_TOKEN",
+        description=(
+            "Token del dashboard de Logfire. Pasa por Settings y no por la env var que "
+            "lee Logfire: en local nadie hace load_dotenv(), así que un token puesto en "
+            "el .env no llegaría al proceso (en docker sí, vía env_file). None = spans "
+            "a consola."
+        ),
+    )
 
     # === API keys ===
     anthropic_api_key: str | None = None
