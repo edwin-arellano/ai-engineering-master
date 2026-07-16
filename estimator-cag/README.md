@@ -1739,3 +1739,42 @@ diagnostica (no corrige) lo que RAGAS no ve: huérfanos sin embedding, duplicado
 *Diferido a futuras sesiones: puente con la BD de negocio (Rails) y multitenant, UI de ingesta
 controlada, y la orquestación agéntica formal del juez/gate (módulo de agentes); la compresión
 abstractiva vía LLM queda opcional (implementada la extractiva, determinista-primero).*
+
+---
+
+## Agente de estimación (S12)
+
+Agente manual (bucle razona→actúa→observa, sin framework) sobre la Responses API de
+OpenAI (`gpt-5`, esfuerzo `medium`). Descompone una transcripción en componentes, busca
+presupuestos históricos por componente y consolida una estimación estructurada, con traza
+paso a paso.
+
+- **Endpoint**: `POST /api/v1/estimate-agentic` — `{transcript, model?, stub?}` →
+  `{status, estimate, trace, steps}`. El backend de negocio no ve el bucle.
+- **Tools**: `search_budgets` (envuelve el retrieval híbrido+rerank de S9–S11),
+  `calculate_estimate` (determinista: mediana + 15% de contingencia, sin LLM),
+  `validate_estimate` (guardrails deterministas; opt-in `AGENT_VALIDATE_ENABLED`).
+- **Traza**: `scripts/run_agent_s12.py <transcript> [--model gpt-5-mini] [--stub]`.
+  Depura con `--stub` + `gpt-5-mini`; ejecuta real con `gpt-5` sobre la compleja.
+- **Config**: `AGENT_MODEL`, `AGENT_DEBUG_MODEL`, `AGENT_REASONING_EFFORT`,
+  `AGENT_MAX_STEPS`, `AGENT_SEARCH_TOP_K`, `AGENT_CONTINGENCY_FACTOR`, `AGENT_VALIDATE_*`.
+
+El agente es la **única** pieza del servicio que no pasa por `LLMWrapper` (LiteLLM +
+Instructor): la Responses API queda aislada en `agentic/`, y las tools invocan por debajo
+el retrieval de S9–S11 intacto. `AGENT_MAX_STEPS` acota **iteraciones** del bucle, no
+llamadas a tools: una vuelta puede traer varias `function_call` en paralelo (`asyncio.gather`),
+así que la traza puede tener más pasos que iteraciones.
+
+*Convergencia y confianza*: el `confidence` de `search_budgets` reutiliza el umbral
+`per_task_close_distance` (0.45), calibrado para el flujo por-tarea. Contra el corpus real
+—sintético y de otros dominios— **ninguna** búsqueda baja de ~0.48, así que todas salen
+`low`. Por eso el system prompt acota la reformulación a dos rondas por componente y trata
+`confidence` como informativo, no como gate: sin ese límite el agente reformula
+indefinidamente y agota `MAX_STEPS` sin llegar a `calculate_estimate`. La cifra resultante
+es baja para el tamaño real del proyecto — es la limitación del corpus, no del bucle: el
+agente prefiere anclarse a lo que encuentra antes que inventar números.
+
+*Diferido al directo (S12-06/07): optimización sistemática de las descripciones de tools,
+variantes de patrón (single-step vs iterativo, plan fijo vs dinámico), medición de coste
+por paso y adelgazamiento del estado acumulado. `needs_review` (handover a humano) queda
+como extensión futura: el bucle solo emite `done` / `max_steps_exceeded`.*
