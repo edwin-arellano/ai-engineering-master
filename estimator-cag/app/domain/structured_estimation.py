@@ -1,12 +1,17 @@
 """Schemas del flujo invertido (S10): (1) esqueleto de módulos/tareas SIN horas
 (generado por CAG), (2) estimación por-tarea con horas DERIVADAS de vecinos históricos
-(consenso determinista, nunca inferencia del modelo) + fiabilidad."""
+(consenso determinista, nunca inferencia del modelo) + fiabilidad.
+
+S12 los ENVUELVE sin romperlos: los campos agénticos (`flag_reason`, `agent_trace`) son
+opcionales y su default `None` deja la salida del flujo determinista byte a byte idéntica."""
 
 from __future__ import annotations
 
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.agent_trace import AgentTrace
 
 
 class SkeletonTask(BaseModel):
@@ -28,6 +33,18 @@ class EstimateSkeleton(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     modules: list[SkeletonModule] = Field(default_factory=list)
+
+
+class StructureProposal(BaseModel):
+    """Salida de la fase 1 agéntica (S12): el esqueleto existente + la traza que lo produjo.
+
+    Envoltorio, no sustituto: `EstimateSkeleton` sigue siendo el contrato que viaja a la
+    fase 2, y es lo que el humano revisa en la puerta entre ambas."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    skeleton: EstimateSkeleton
+    agent_trace: AgentTrace | None = None
 
 
 class Reliability(StrEnum):
@@ -57,6 +74,10 @@ class TaskEstimate(BaseModel):
     reliability: Reliability = Reliability.NONE
     neighbors: list[TaskNeighbor] = Field(default_factory=list)
     needs_human_input: bool = True
+    # S12: por qué el retrieval determinista no supo cerrar esta tarea. None ⇒ no flaggeada
+    # (el determinista la resolvió bien y el agente de recuperación ni la mira). Lo puebla
+    # `agentic.flagging`, sin LLM.
+    flag_reason: str | None = None
 
 
 class EstimatedModule(BaseModel):
@@ -80,3 +101,5 @@ class StructuredEstimate(BaseModel):
     modules: list[EstimatedModule] = Field(default_factory=list)
     coverage: Coverage
     total_suggested_hours: float = Field(ge=0)  # suma de suggested_hours conocidas
+    # S12: traza de la fase de recuperación. None ⇒ la produjo el flujo determinista puro.
+    agent_trace: AgentTrace | None = None
