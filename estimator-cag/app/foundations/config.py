@@ -52,6 +52,53 @@ class Settings(BaseSettings):
     reject_on_dangling: bool = Field(default=False, alias="REJECT_ON_DANGLING")
     reformulation_prompt_version: str = Field(default="v1", alias="REFORMULATION_PROMPT_VERSION")
 
+    # === Calidad de generación (S11): augmentation. Todo off → comportamiento pre-S11. ===
+    context_compression_enabled: bool = Field(
+        default=False, alias="CONTEXT_COMPRESSION_ENABLED",
+        description="Compresión extractiva determinista de cada chunk (limpia el vector).",
+    )
+    keypoint_max_chars: int = Field(default=600, alias="KEYPOINT_MAX_CHARS")
+    reorder_by_edges_enabled: bool = Field(
+        default=False, alias="REORDER_BY_EDGES_ENABLED",
+        description="Reorden por extremos contra el 'lost-in-the-middle'.",
+    )
+
+    # === Calidad de generación (S11): gate de alucinaciones ===
+    hallucination_gate_enabled: bool = Field(
+        default=False, alias="HALLUCINATION_GATE_ENABLED",
+        description="Ancla numérica + juez → degradar líneas no sostenidas a cero.",
+    )
+    hours_per_engineer_day: float = Field(
+        default=8.0, alias="HOURS_PER_ENGINEER_DAY",
+        description="Conversión días↔horas del ancla numérica (fricción de unidades).",
+    )
+    numeric_deviation_tolerance: float = Field(
+        default=0.25, alias="NUMERIC_DEVIATION_TOLERANCE",
+        description="Desviación relativa máxima línea-vs-evidencia antes de degradar.",
+    )
+    judge_enabled: bool = Field(default=True, alias="JUDGE_ENABLED")
+    judge_prompt_version: str = Field(default="v1", alias="JUDGE_PROMPT_VERSION")
+
+    # === Calidad de generación (S11): síntesis de rangos honestos ===
+    synthesis_enabled: bool = Field(
+        default=False, alias="SYNTHESIS_ENABLED",
+        description="Sintetiza HourRange por línea desde las horas de las fuentes citadas.",
+    )
+    contradiction_cv_threshold: float = Field(
+        default=0.5, alias="CONTRADICTION_CV_THRESHOLD",
+        description="Coef. de variación por encima del cual se descarta la síntesis (contradicción).",
+    )
+    synthesis_reason_enabled: bool = Field(default=True, alias="SYNTHESIS_REASON_ENABLED")
+    synthesis_reason_prompt_version: str = Field(
+        default="v1", alias="SYNTHESIS_REASON_PROMPT_VERSION"
+    )
+
+    # === Curación del corpus (S11): gate de indexabilidad en la ingesta ===
+    enforce_indexability_gate: bool = Field(
+        default=True, alias="ENFORCE_INDEXABILITY_GATE",
+        description="No vectorizar excepciones/casos límite (garbage-in-garbage-out).",
+    )
+
     # === Retrieval avanzado (S10): híbrida + reranking ===
     rag_search_mode: str = Field(
         default="vector", alias="RAG_SEARCH_MODE",

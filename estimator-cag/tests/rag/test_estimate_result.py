@@ -10,6 +10,7 @@ from app.domain.rag_estimation import (
     RagModule,
     RagTask,
 )
+from app.generation.rag.quality import DegradationReport
 from app.generation.rag.retrieval.service import EstimateFromTranscriptResult
 from app.generation.rag.retrieval.verification import CitationReport, verify_citations
 from app.generation.rag.schemas import AugmentedContext
@@ -37,6 +38,9 @@ def _result(estimate: RagEstimate, report: CitationReport) -> EstimateFromTransc
         context_tokens=10,
         citation_report=report,
         invalid_citations=report.dangling,  # mismo cableado que el servicio
+        degradation_report=DegradationReport(
+            total_lines=1, degraded_lines=0, verified_lines=1, gates=[]
+        ),
         search_time_ms=1,
         search_mode="hybrid",
         reranking=True,

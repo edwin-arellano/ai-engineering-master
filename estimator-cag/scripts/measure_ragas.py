@@ -75,7 +75,9 @@ async def _build_row(entry: dict, *, wrapper, embedder, settings) -> dict:
         search_mode=settings.rag_search_mode,
         reranking=settings.reranking_enabled,
     )
-    context = assemble_context(retrieval, max_tokens=settings.rag_max_context_tokens)
+    context = assemble_context(
+        retrieval, max_tokens=settings.rag_max_context_tokens, settings=settings
+    )
     estimate = generate_rag_estimate(
         reformulated=reformulated, context=context, wrapper=wrapper, settings=settings
     )

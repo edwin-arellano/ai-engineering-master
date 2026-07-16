@@ -46,6 +46,38 @@
       "expected_targets": ["budgets"],
       "ground_truth": "Estimación de referencia (experto): el corpus NO tiene un presupuesto de gestión documental con RBAC; el análogo más cercano es BUD-2023-015 (LMS: course delivery + adaptive paths), que aporta el patrón de entrega de contenidos con roles. Una estimación honesta debe apoyarse en ese análogo para el control de acceso por roles y marcar como ASUNCIONES (is_assumption=true) los componentes propios de gestión documental (versionado, indexado, búsqueda de documentos) que el contexto no respalda. Confianza baja por cobertura débil; es preferible señalar asunciones a inventar cifras.",
       "note": "Caso difícil / dominio colindante: el corpus no tiene gestión documental con RBAC. BUD-2023-015 (LMS: course delivery + adaptive paths) es el análogo más cercano (entrega de contenidos con roles). Cobertura débil a propósito, para estresar las 4 configs."
+    },
+    {
+      "id": "q06",
+      "query": "kiero app pagos stripe subscrpiciones y wehbooks urgente!!!",
+      "relevant_budget_ids": ["BUD-2024-002", "BUD-2023-006"],
+      "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): pese a los errores de escritura y el ruido ('urgente!!!'), la intención es la misma que q03 (integración de pagos con suscripciones y webhooks). El sistema debe robustecerse a la consulta mal formada y anclarse en BUD-2024-002 (payment gateway adapter) y BUD-2023-006 (split payment engine). El ruido no debe cambiar el esfuerzo estimado respecto a la versión bien escrita.",
+      "note": "RUIDO: query mal escrita (typos, jerga, signos), no happy-path. Prueba robustez de la reformulación/recuperación ante entradas sucias — mismo objetivo que q03."
+    },
+    {
+      "id": "q07",
+      "query": "¿cuál es la mejor receta de paella valenciana para 8 personas?",
+      "relevant_budget_ids": [],
+      "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): la consulta es COMPLETAMENTE fuera de dominio (no es un proyecto de software). La respuesta honesta es confidence='insufficient', modules=[] y totales a null: el corpus no contiene nada relevante y no se debe fabricar una estimación. Ningún presupuesto es relevante.",
+      "note": "FUERA DE DOMINIO: entrada sin relación con software. Prueba que el sistema responde 'insuficiente' en vez de alucinar una estimación. relevant_budget_ids vacío a propósito (context_recall no aplica)."
+    },
+    {
+      "id": "q08",
+      "query": "algo para gestionar cosas de la empresa, no sé, lo típico",
+      "relevant_budget_ids": ["BUD-2023-015"],
+      "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): consulta AMBIGUA e infra-especificada ('cosas', 'lo típico'). Sin un dominio claro, la estimación debe ser de confianza baja, apoyarse en el análogo más genérico disponible (herramienta interna con roles, BUD-2023-015) y marcar como asunciones la mayoría de componentes. Es preferible pedir aclaración / señalar baja confianza que comprometer una cifra concreta.",
+      "note": "AMBIGUA / infra-especificada: sin señal de dominio. Prueba que la confianza baja y las asunciones dominan en vez de inventar un scope."
+    },
+    {
+      "id": "q09",
+      "query": "Necesito banca OAuth PSD2 y también e-commerce con carrito y además telemedicina con recetas, todo junto para ya",
+      "relevant_budget_ids": ["BUD-2024-001", "BUD-2024-005", "BUD-2024-010"],
+      "expected_targets": ["budgets"],
+      "ground_truth": "Estimación de referencia (experto): consulta MULTI-TEMA que mezcla tres dominios inconexos (banca OAuth/PSD2 → BUD-2024-001; e-commerce/carrito → BUD-2024-005; telemedicina/recetas → BUD-2024-010). Una estimación honesta debe cubrir los tres bloques por separado, con el esfuerzo sumado de los tres presupuestos análogos, y señalar que 'todo junto para ya' no es un scope realista (dependencias e integración añadirían esfuerzo). Confianza media: cada sub-tema tiene análogo, pero el conjunto es artificialmente amplio.",
+      "note": "MULTI-TEMA / run-on: tres dominios en una frase con presión temporal irreal. Prueba la cobertura de sub-temas dispares (parecido al r04 de routing, pero sobre generación) y la síntesis honesta."
     }
   ],
   "routing_queries": [

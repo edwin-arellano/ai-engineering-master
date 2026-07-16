@@ -22,8 +22,10 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.foundations.config import get_settings
 from app.generation.rag.chunking.registry import build_chunker
 from app.generation.rag.embedding.embedder import LiteLLMEmbedder
+from app.generation.rag.quality import is_indexable
 from app.generation.rag.persistence.collections import COLLECTION_MODELS
 from app.generation.rag.persistence.database import get_db_session
 from app.generation.rag.persistence.models import EMBEDDING_DIM
@@ -146,6 +148,32 @@ async def ingest(
             request.collection, request
         )
     chunks = [c for c in raw_chunks if not c.is_orphan]
+
+    # 3b. Gate de curación (S11): no vectorizar excepciones/casos límite (GIGO). El
+    # health-check del índice es la red que RAGAS no ve. Puente con la BD de negocio y
+    # multitenant → capa de negocio (fuera de scope).
+    settings = get_settings()
+    skipped_non_indexable = 0
+    if settings.enforce_indexability_gate:
+        doc_verdict = is_indexable(metadata=document_metadata)
+        if not doc_verdict.indexable:
+            logger.info(
+                "embeddings.document_not_indexable",
+                source_path=request.source_path,
+                reasons=doc_verdict.reasons,
+            )
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "detail": "Document not indexable; skipped",
+                    "reasons": doc_verdict.reasons,
+                    "chunks_created": 0,
+                },
+            )
+        kept = [c for c in chunks if is_indexable(metadata=c.metadata).indexable]
+        skipped_non_indexable = len(chunks) - len(kept)
+        chunks = kept
+
     model = COLLECTION_MODELS[request.collection]
 
     # 4. embeddings por lotes (embedder bloqueante → thread)
@@ -182,4 +210,5 @@ async def ingest(
         chunks_created=chunks_created,
         embedding_dimension=dimension,
         ingestion_time_ms=elapsed_ms,
+        skipped_non_indexable=skipped_non_indexable,
     )

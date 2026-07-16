@@ -74,6 +74,9 @@ def build_metadata(
         "complexity": component.complexity,
         "estimated_hours": component.estimated_hours,
         "strategy": strategy,
+        # S11 (curación): indexable por defecto; `extra` puede marcarlo a False para
+        # excepciones/casos límite que falsearían los vectores (garbage-in-garbage-out).
+        "indexable": True,
         **extra,
     }
 

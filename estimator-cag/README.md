@@ -1629,3 +1629,113 @@ con los nuevos toggles (corpus pequeño, ranking sobre todo el corpus, sin filtr
 Seq Scan por coste (la alineación operador/índice es correcta — verificable con
 `scripts/seed_synthetic_chunks.py` para forzar el HNSW). *Diferido a futuras sesiones:
 securización del retriever y agentes (módulo de agentes), generación/calidad final (S11).*
+
+## pre-S11 — Generación verificable: citación a nivel de línea + baseline RAGAS
+
+El generador RAG single-pass (`POST /api/v1/estimate-from-transcript`) pasa de "parece
+acertada" a **citación verificable por línea**. `Citation` se enriquece (`domain/rag_estimation.py`):
+cada fuente lleva `source_id` (= chunk_ref, verificable contra los chunks recuperados),
+`document_id` (= budget_id, el presupuesto histórico) y `evidence` (span o cifra **literal**
+copiada del chunk, no parafraseada). El bloque de contexto (`retrieval/augmentation.py`)
+expone también el `document_id` para que el modelo pueda atribuir y copiar la evidencia. Un
+prompt de generación **`v2`** (`prompts/rag_estimation/v2/system.j2`) fuerza la atribución
+por línea: cada tarea con evidencia cita `source_id` + `document_id` literales del contexto y
+copia `evidence` verbatim; las tareas sin soporte se marcan `is_assumption=true` con
+`sources=[]` (no se estima a ojo). Equivalencia documentada: **`grounded ≡ not is_assumption`**.
+
+La verificación (`retrieval/verification.py`) pasa de una lista de citas inválidas a un
+**`CitationReport{total_lines, grounded_lines, insufficient_lines, dangling}`**. Detecta
+**citas colgantes** (`source_id` que nunca estuvo en el contexto recuperado), las reporta y
+las loguea correlacionadas por `request_id` (vía `structlog.contextvars`). Es una verificación
+**estructural** (la fuente existió), **no semántica** (que la fuente diga lo que la línea
+afirma — eso llega en el directo S11). El contrato HTTP **se enriquece**: `EstimateFromTranscriptResult`
+gana `citation_report` y conserva `invalid_citations` como alias de `citation_report.dangling`.
+Política configurable: por defecto detectar+reportar; con `REJECT_ON_DANGLING=true`, una cita
+colgante devuelve **422**. El flujo invertido (`/estimate-structured`) queda intacto: su
+procedencia (horas derivadas de vecinos) ya es verificable por construcción.
+
+### Baseline RAGAS (`scripts/measure_ragas.py`)
+
+El golden set (`scripts/golden_set.json`) se extiende con una `ground_truth` (estimación de
+referencia experta) por consulta, y un arnés calcula las **cuatro métricas** RAGAS sobre el
+path single-pass (juez `gpt-4o-mini`, embeddings `text-embedding-3-small`):
+
+| Métrica | Promedio (5 consultas) |
+|---|---|
+| faithfulness | 0.596 |
+| answer_relevancy | 0.148 |
+| context_precision | 0.682 |
+| context_recall | 0.400 |
+
+Lo más llamativo: `answer_relevancy` se desploma en las consultas de confianza baja/media
+(respuestas verbosas con mucho `reasoning` disparan el clasificador de "respuesta no
+comprometida"); `faithfulness` moderada es coherente con la **citación gruesa** (el `evidence`
+se copia a nivel de chunk, no de cifra anclada, y el juez penaliza la conversión horas→días);
+`context_recall` flojo, nulo en el caso de gestión documental (cobertura débil a propósito).
+El entregable completo (tabla 4×5, reporte de citaciones real con una cita colgante inyectada
+y la nota) está en `pre-session-11.md`.
+
+*Nota de entorno:* la app fija `openai` **2.x** (LiteLLM/Instructor) y el juez de RAGAS
+necesita el stack `langchain` con `openai` **1.x** — incompatibles en un proceso. Por eso el
+arnés corre en **dos fases**: `generate` (venv de la app) vuelca las 4 entradas a un JSON;
+`evaluate` (entorno aislado `uv run --no-project --with 'ragas>=0.2,<0.3' ...`) calcula las
+métricas sin importar la app. `ragas` pineado a la serie 0.2.
+
+## S11 — Generación y calidad: gate de alucinaciones, síntesis de rangos y evaluación
+
+Capa de **calidad de generación** sobre el single-pass, toda **opt-in por config** (con todos
+los toggles a False, comportamiento idéntico a pre-S11). Vive en el paquete nuevo
+`app/generation/rag/quality/` y se integra tras la generación en `retrieval/service.py`.
+
+**Augmentation** (`retrieval/augmentation.py`) gana dos helpers deterministas activables:
+`extract_keypoints` (compresión **extractiva** — conserva líneas con señal: cifras, tecnologías,
+verbos; limpia el vector, no llama al LLM) y `reorder_by_edges` (carga de extremos contra el
+*lost-in-the-middle*: el chunk más fuerte al principio, el 2º al final, los débiles al centro).
+
+**Gate de alucinaciones**: combina un **ancla numérica determinista** (`numeric_anchor.py` —
+parsea la cifra literal de la `evidence`, la lleva a días-ingeniero con `hours_per_engineer_day`
+y mide la desviación; **nunca un modelo para el cálculo**; robusta a los dos órdenes del corpus,
+"120 horas" y "Estimated hours: 90") con un **juez LLM** por línea (`judge.py` — alias barato
+`reformulator`, batched async; decide si la evidencia soporta *genuinamente* el effort/scope: la
+verificación **semántica** que la estructural de pre-S11 no cubre). `gate_line` es una **función
+pura** que degrada una línea si no está grounded, o la desviación numérica supera la tolerancia,
+o el juez la rechaza; `apply_gate` pone esas líneas a **cero horas** y **recalcula
+`total_engineer_days`** para no violar `totals_match_sum_of_tasks`, devolviendo un
+`DegradationReport`. Se habla en **márgenes de fiabilidad** (degradado/verificado), nunca
+correcto/incorrecto: degradar a cero antes que emitir una cifra inventada.
+
+**Síntesis de rangos honestos** (`synthesis.py`): cuando las fuentes citadas de una línea
+discrepan sin contradecirse, `synthesize_range` devuelve un `HourRange{min, max, reason,
+dispersion}` (nuevo campo opcional `RagTask.hour_range`) en vez de un número ciego. Primero
+detecta **contradicción** por coeficiente de variación (si supera `contradiction_cv_threshold`,
+**descarta** la síntesis: los datos no encajan). El número (min/max/dispersión) es determinista;
+un mini LLM barato SOLO redacta la `reason` para el humano que fijará la cifra.
+
+`EstimateFromTranscriptResult` gana `degradation_report` (contrato enriquecido, no roto).
+
+### Pipeline de evaluación (`scripts/eval_generation.py`)
+
+Extiende el baseline RAGAS con tres modos (misma arquitectura de dos fases que `measure_ragas`):
+
+- **gate** (offline/CI): corre el flujo completo (augment+gate+synthesis on), compara las 4
+  métricas contra `scripts/eval_baseline.json` con **tolerancia 0.05** (`floor = baseline −
+  tolerancia`); **FAIL con exit≠0** si alguna métrica cae por debajo del floor.
+- **monitor** (producción, *reference-less*): sin `ground_truth` → **no** calcula `context_recall`;
+  vigila `faithfulness`/`answer_relevancy` en vivo.
+- **compare**: corre variantes por fase (`baseline` S10 = todo off / `+hallucination_gate` /
+  `+augmentation` / `+synthesis`) y muestra los **deltas por métrica** de cada fase — para saber
+  qué aporta dónde (*optimizar una sola métrica deja de medir calidad*).
+
+### Curación del corpus (`quality/curation.py` + `scripts/check_index_health.py`)
+
+*Garbage-in-garbage-out*: los casos límite o excepciones de cliente (aunque correctos) falsean
+los vectores, y **RAGAS no lo detecta** (mide contra el golden set limpio mientras producción se
+degrada en silencio). `is_indexable` es un gate determinista (flag `indexable` en metadata +
+señales `is_exception`/`client_specific`) enganchado en `POST /embeddings/ingest`: lo no
+indexable **no se vectoriza** y se reporta (`skipped_non_indexable`). `check_index_health.py`
+diagnostica (no corrige) lo que RAGAS no ve: huérfanos sin embedding, duplicados exactos de
+`content`, dimensión ≠ 1536 y distribución de `estimated_hours`/`year` por colección.
+
+*Diferido a futuras sesiones: puente con la BD de negocio (Rails) y multitenant, UI de ingesta
+controlada, y la orquestación agéntica formal del juez/gate (módulo de agentes); la compresión
+abstractiva vía LLM queda opcional (implementada la extractiva, determinista-primero).*
