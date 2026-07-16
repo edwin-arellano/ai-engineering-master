@@ -198,6 +198,32 @@ class Settings(BaseSettings):
         default=5000.0, alias="AGENT_VALIDATE_MAX_COMPONENT_HOURS"
     )
 
+    # === S12: Flujo híbrido (el agente entra SOLO en dos fases del flujo estructurado) ===
+    # Perfil único en S12. Nombra al agente en la traza y elige la carpeta de sus prompts
+    # (prompts/agents/<perfil>/...). Multi-perfil (Neo/Trinity en paralelo) → S13/S14.
+    agent_profile_name: str = Field(default="neo", alias="AGENT_PROFILE_NAME")
+    structure_agent_prompt_version: str = Field(
+        default="v1", alias="STRUCTURE_AGENT_PROMPT_VERSION"
+    )
+    recovery_agent_prompt_version: str = Field(
+        default="v1", alias="RECOVERY_AGENT_PROMPT_VERSION"
+    )
+    # Fase 2a — flagging determinista (sin LLM). Coef. de variación de las horas de los
+    # vecinos por encima del cual las fuentes se consideran en conflicto y la tarea se
+    # manda al agente de recuperación. Más bajo que contradiction_cv_threshold (0.5, S11)
+    # a propósito: allí el umbral DESCARTA la síntesis; aquí solo pide una segunda mirada,
+    # que es barata, así que conviene ser más sensible.
+    agent_flag_dispersion_threshold: float = Field(
+        default=0.35, alias="AGENT_FLAG_DISPERSION_THRESHOLD"
+    )
+    # Fase 2b — bucle de recuperación. OFF deja el flujo agéntico en determinista + flags
+    # (útil para medir cuánto aporta realmente el agente sobre la línea base).
+    agent_recovery_enabled: bool = Field(default=True, alias="AGENT_RECOVERY_ENABLED")
+    # Presupuesto de pasos POR TAREA flaggeada, propio y más corto que agent_max_steps (8,
+    # que cubre un proyecto entero en el one-shot): aquí el prompt permite dos búsquedas,
+    # así que 4 deja margen sin pagar vueltas de más multiplicadas por cada tarea.
+    agent_recovery_max_steps: int = Field(default=4, alias="AGENT_RECOVERY_MAX_STEPS")
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
