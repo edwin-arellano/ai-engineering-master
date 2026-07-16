@@ -224,6 +224,29 @@ class Settings(BaseSettings):
     # así que 4 deja margen sin pagar vueltas de más multiplicadas por cada tarea.
     agent_recovery_max_steps: int = Field(default=4, alias="AGENT_RECOVERY_MAX_STEPS")
 
+    # === Orquestación con grafo LangGraph (S13) ===
+    graph_conditional_validation: bool = Field(
+        default=False,
+        alias="GRAPH_CONDITIONAL_VALIDATION",
+        description=(
+            "Nivel 3 del ejercicio: si True, validate_and_consolidate usa una arista "
+            "condicional (validated | needs_review). Default False = arista fija a END."
+        ),
+    )
+    logfire_enabled: bool = Field(
+        default=True,
+        alias="LOGFIRE_ENABLED",
+        description=(
+            "Configura Logfire al arranque (instrument fastapi/asyncpg/httpx). Sin "
+            "LOGFIRE_TOKEN los spans van a consola local (send_to_logfire=if-token-present)."
+        ),
+    )
+    logfire_service_name: str = Field(
+        default="estimator-cag",
+        alias="LOGFIRE_SERVICE_NAME",
+        description="service_name reportado por Logfire.",
+    )
+
     # === API keys ===
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
